@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#142625">
+  <title>Motherduck</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="screen" aria-label="Motherduck game">
+    <canvas width="320" height="180" tabindex="-1" aria-label="Motherduck. Move the hand with the pointer or arrow keys to nudge ducks.">
+      Motherduck needs a browser with Canvas support.
+    </canvas>
+
+    <div class="hud" aria-label="Run status">
+      <div class="stats">
+        <div class="stat"><span>Flock</span><strong id="remaining">14</strong></div>
+        <div class="stat losses"><span>Lost</span><strong id="losses">0 / 10</strong></div>
+        <div class="stat"><span>Distance</span><strong id="distance">0 m</strong></div>
+        <div class="stat stamina">
+          <span id="stamina-label">Stamina</span>
+          <div id="stamina-meter" role="meter" aria-labelledby="stamina-label" aria-valuemin="0"><div id="stamina-fill"></div></div>
+          <small id="hand-status" role="status"></small>
+        </div>
+      </div>
+      <div class="run-tools" id="run-tools" hidden>
+        <span class="zone-chip"><span id="zone-name"></span><span id="stage-progress"></span></span>
+        <div>
+          <button id="restart" type="button">Restart <span aria-hidden="true">↻</span></button>
+          <button id="change-zone" type="button">Zones</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="event-notice" id="event-notice" role="status" hidden></div>
+
+    <section class="tutorial-card" id="tutorial-card" aria-label="Tutorial lesson" hidden>
+      <div class="tutorial-heading">
+        <span id="lesson-progress"></span>
+        <button id="skip-lesson" type="button">Skip tutorial</button>
+      </div>
+      <div role="status">
+        <h2 id="lesson-title"></h2>
+        <p id="lesson-prompt"></p>
+      </div>
+      <button id="enter-arena" type="button" hidden>Enter arena</button>
+    </section>
+
+    <div class="hand-actions" id="hand-actions" role="group" aria-label="Hand actions" hidden>
+      <button type="button" data-action="punch" aria-keyshortcuts="Z"><kbd>Z</kbd> Punch</button>
+      <button type="button" data-action="attackSlam" aria-keyshortcuts="X"><kbd>X</kbd> Attack slam</button>
+      <button type="button" data-action="defenseSlam" aria-keyshortcuts="C"><kbd>C</kbd> Defense slam</button>
+      <button type="button" data-action="grab" aria-keyshortcuts="Space"><kbd>Space</kbd> <span id="grab-label">Grab</span></button>
+    </div>
+
+    <div class="menu" id="start-screen">
+      <div class="card">
+        <p class="eyebrow">Choose a zone</p>
+        <h1>Motherduck<span>.</span></h1>
+        <fieldset class="stage-picker" id="stage-picker" aria-label="Starting zone">
+          <label><input type="radio" name="zone" value="forest" checked><span>Forest</span></label>
+          <label><input type="radio" name="zone" value="river"><span>River</span></label>
+        </fieldset>
+        <div class="menu-actions">
+          <button id="start" type="button">Start tutorial</button>
+          <button id="tutorial-option" type="button">Skip tutorial</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="menu" id="end-screen" hidden>
+      <div class="card">
+        <p class="eyebrow">Run ended</p>
+        <h2>Ten ducks lost.</h2>
+        <p id="result"></p>
+        <button type="button" id="retry">Try again <span aria-hidden="true">↻</span></button>
+        <button type="button" id="end-zones">Zones</button>
+      </div>
+    </div>
+  </main>
+  <script type="module" src="./game.mjs"></script>
+</body>
+</html>
