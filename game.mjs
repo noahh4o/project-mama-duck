@@ -414,7 +414,7 @@ function frame(now) {
 
     if (arena.gameOver) {
       updateMusic();
-      result.textContent = `The flock made it ${distance.textContent}.`;
+      result.textContent = `The flock made it to Stage ${arena.stage}, ${distance.textContent}`;
       runTools.hidden = true;
       eventNotice.hidden = true;
       staminaWidget.hidden = true;
