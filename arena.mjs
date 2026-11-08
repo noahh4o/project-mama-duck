@@ -299,8 +299,8 @@ export function performHandAction(state, action) {
   if (state.stamina === 0) {
     state.cooldown = COOLDOWN_SECONDS;
     releaseDucks(state);
+    }
   }
-}
   state.actionEffect = { action, ...state.hand, remaining: 0.28, radius };
   return true;
 }
