@@ -10,12 +10,6 @@ const LESSONS = [
     duck: { x: 160, y: 99 },
   },
   {
-    title: 'Punch',
-    prompt: 'Move hand close to the target, then press Z or tap Punch.',
-    action: 'punch',
-    targets: [{ x: 188, y: 96 }],
-  },
-  {
     title: 'Attack slam',
     prompt: 'Move between both targets, then press X or tap Attack slam to hit both together.',
     action: 'attackSlam',
@@ -113,7 +107,6 @@ export function advanceTutorial(tutorial, performedAction) {
   }
   if (performedAction !== lesson.action) return;
 
-  if (performedAction === 'punch' && arena.enemies[0].hp === arena.enemies[0].maxHp) return;
   if (performedAction === 'attackSlam' && arena.enemies.some(({ hp }) => hp > 0)) {
     for (const enemy of arena.enemies) enemy.hp = enemy.maxHp;
     return;

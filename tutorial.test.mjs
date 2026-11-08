@@ -22,8 +22,6 @@ function act(tutorial, action) {
 function reachGrab(tutorial) {
   move(tutorial, 175, 99);
   move(tutorial, 188, 96);
-  act(tutorial, 'punch');
-  move(tutorial, 200, 108);
   act(tutorial, 'attackSlam');
   assert.equal(getTutorialLesson(tutorial).action, 'grab');
 }
@@ -41,33 +39,28 @@ test('tutorial waits for a real nudge and stays safe while waiting', () => {
   assert.deepEqual(arena.enemies, []);
 
   move(tutorial, 175, 99);
-  assert.equal(getTutorialLesson(tutorial).action, 'punch');
+  assert.equal(getTutorialLesson(tutorial).action, 'attackSlam');
   assert.equal(tutorial.arena, arena);
 });
 
-test('punch and attack slam require actually hitting the practice targets', () => {
+test('attack slam requires actually hitting the practice targets', () => {
   const tutorial = createTutorial();
   move(tutorial, 175, 99);
 
-  act(tutorial, 'punch');
-  assert.equal(getTutorialLesson(tutorial).action, 'punch');
-  move(tutorial, 188, 96);
-  act(tutorial, 'punch');
-  assert.equal(getTutorialLesson(tutorial).action, 'attackSlam');
-  assert.equal(tutorial.arena.stamina, MAX_STAMINA);
-
-  move(tutorial, 147, 99);
+  move(tutorial, 100, 40);
   act(tutorial, 'attackSlam');
   assert.equal(getTutorialLesson(tutorial).action, 'attackSlam');
-  move(tutorial, 200, 108);
+  move(tutorial, 188, 96);
   act(tutorial, 'attackSlam');
   assert.equal(getTutorialLesson(tutorial).action, 'grab');
+  assert.equal(tutorial.arena.stamina, MAX_STAMINA);
 });
 
 test('grab timeout retries the lesson and manual release advances it', () => {
   const tutorial = createTutorial();
   reachGrab(tutorial);
 
+  move(tutorial, 240, 140);
   act(tutorial, 'grab');
   assert.equal(getTutorialLesson(tutorial).action, 'grab');
   move(tutorial, 169, 100);

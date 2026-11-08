@@ -17,7 +17,7 @@ export const SCROLL_SPEED = 44;
 export const STAGE_DISTANCE = 70;
 export const STAGE_REINFORCEMENTS = 2;
 export const ACTION_COSTS = Object.freeze({
-  punch: 18, attackSlam: 40, defenseSlam: 30, grab: 24, release: 0,
+  attackSlam: 40, defenseSlam: 30, grab: 24, release: 0,
 });
 
 const FLOCK_SIZE = 14;
@@ -45,7 +45,7 @@ const BURNED_ROUTES = [
 ];
 const BURN_LINGER = 1.25;
 const EXTINGUISH_GRACE = 0.55;
-const ACTION_RADIUS = { punch: 26, attackSlam: 43, defenseSlam: 40, grab: 32, release: 18 };
+const ACTION_RADIUS = { attackSlam: 43, defenseSlam: 40, grab: 32, release: 18 };
 const COOLDOWN_SECONDS = 2;
 const HOLD_SECONDS = 2.5;
 const HELD_X_OFFSETS = [0, -11, 11];
@@ -213,14 +213,9 @@ function releaseDucks(state) {
   state.holdTime = 0;
 }
 
-function attackEnemies(state, action, radius) {
+function attackEnemies(state, radius) {
   const targets = state.enemies.filter((enemy) => enemy.hp > 0 && distanceBetween(enemy, state.hand) <= radius);
-  if (action === 'punch') {
-    targets.sort((first, second) => distanceBetween(first, state.hand) - distanceBetween(second, state.hand));
-    if (targets.length > 0) targets[0].hp = Math.max(0, targets[0].hp - 1);
-  } else {
-    for (const enemy of targets) enemy.hp = Math.max(0, enemy.hp - 2);
-  }
+  for (const enemy of targets) enemy.hp = Math.max(0, enemy.hp - 2);
 }
 
 function knockDuckToSafety(state, duck, barriers) {
@@ -275,7 +270,7 @@ export function performHandAction(state, action) {
   const radius = ACTION_RADIUS[action];
   if (action === 'grab' && !grabDucks(state, radius)) return false;
   if (action === 'release') releaseDucks(state);
-  if (action === 'punch' || action === 'attackSlam') attackEnemies(state, action, radius);
+  if (action === 'attackSlam') attackEnemies(state, radius);
   if (action === 'defenseSlam') {
     const exposedCount = countExposedDucks(state.ducks);
     const barriers = state.obstacles.concat(state.enemies

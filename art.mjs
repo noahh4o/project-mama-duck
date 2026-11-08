@@ -397,10 +397,10 @@ function drawAlligator(context, enemy, exposedDuckCount) {
 
 function drawActionEffect(context, { action, x, y, radius }) {
   const color = {
-    punch: '#f4dfb2', attackSlam: '#f3a461', defenseSlam: '#bde8cd',
+    attackSlam: '#f3a461', defenseSlam: '#bde8cd',
     grab: '#f4dfb2', release: '#bde8cd',
   }[action];
-  const points = action === 'punch' ? 8 : 20;
+  const points = 20;
   for (let point = 0; point < points; point += 1) {
     const angle = point * 2 * Math.PI / points;
     const dotX = Math.round(x + Math.cos(angle) * radius);
