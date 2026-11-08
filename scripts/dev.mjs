@@ -16,6 +16,7 @@ const files = new Map([
   ['/assets/handHit.png', 'assets/handHit.png'],
   ['/assets/handSleep.png', 'assets/handSleep.png'],
   ['/assets/handGrab.png', 'assets/handGrab.png'],
+  ['/assets/duckling.png', 'assets/duckling.png'],
   ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
 ]);
 const contentTypes = {
