@@ -22,6 +22,7 @@ import {
   hitDuck,
   performHandAction,
   setHandPosition,
+  setWebcamHands,
   stepArena,
 } from "./arena.mjs";
 
@@ -80,6 +81,24 @@ test("the fixed-size hand stays entirely within the arena", () => {
   setHandPosition(state, Number.NaN, Infinity);
   stepArena(state, 1 / 60);
   assert.deepEqual(state.handTarget, { x: WIDTH - HAND_WIDTH / 2, y: HAND_HEIGHT / 2 });
+});
+
+test("webcam can activate two hands while pointer positioning stays single-hand", () => {
+  const state = createArena();
+  assert.deepEqual(state.activeHands, [true, false]);
+
+  setWebcamHands(state, [
+    { handIndex: 0, target: { x: 40, y: 50 } },
+    { handIndex: 1, target: { x: 280, y: 130 } },
+  ]);
+  advance(state, 1);
+  assert.deepEqual(state.activeHands, [true, true]);
+  assert.ok(state.hands[0].x < state.hands[1].x);
+
+  setWebcamHands(state, []);
+  setHandPosition(state, 150, 90);
+  assert.deepEqual(state.activeHands, [true, false]);
+  assert.deepEqual(state.handTarget, { x: 150, y: 90 });
 });
 
 
@@ -334,6 +353,18 @@ test("attack slam damages each enemy in range once", () => {
   assert.equal(nextEnemy.hp, 1);
 });
 
+test("both hands can attack independently from their own positions", () => {
+  const state = createArena();
+  const leftEnemy = { x: state.hands[0].x + 10, y: state.hands[0].y, hp: 3, maxHp: 3 };
+  const rightEnemy = { x: state.hands[1].x + 10, y: state.hands[1].y, hp: 3, maxHp: 3 };
+  state.enemies = [leftEnemy, rightEnemy];
+
+  assert.equal(performHandAction(state, "attackSlam", { handIndex: 1 }), true);
+  assert.equal(leftEnemy.hp, 3);
+  assert.equal(rightEnemy.hp, 1);
+  assert.equal(state.stamina, MAX_STAMINA - ACTION_COSTS.attackSlam);
+});
+
 test("grab carries nearby ducks safely and a free release restores their vulnerability", () => {
   const state = createArena();
   assert.equal(performHandAction(state, "grab"), true);
@@ -355,6 +386,29 @@ test("grab carries nearby ducks safely and a free release restores their vulnera
   assert.equal(duck.protected, false);
   hitDuck(state, duck.id);
   assert.equal(duck.alive, false);
+});
+
+test("each hand holds and releases its own ducks independently", () => {
+  const state = createArena();
+  const leftDuck = { id: 100, x: state.hands[0].x, y: state.hands[0].y, cruiseX: state.hands[0].x, alive: true, protected: false, burnTime: 0, burnDamage: 0, fireGrace: 0 };
+  const rightDuck = { id: 101, x: state.hands[1].x, y: state.hands[1].y, cruiseX: state.hands[1].x, alive: true, protected: false, burnTime: 0, burnDamage: 0, fireGrace: 0 };
+  state.ducks = [leftDuck, rightDuck];
+
+  assert.equal(performHandAction(state, "grab", { handIndex: 0 }), true);
+  assert.equal(performHandAction(state, "grab", { handIndex: 1 }), true);
+  assert.deepEqual(state.heldDuckIdsByHand, [[100], [101]]);
+  assert.deepEqual(state.heldDuckIds, [100, 101]);
+  assert.equal(state.stamina, MAX_STAMINA - ACTION_COSTS.grab * 2);
+
+  assert.equal(performHandAction(state, "release", { handIndex: 0 }), true);
+  assert.equal(leftDuck.protected, false);
+  assert.equal(rightDuck.protected, true);
+  assert.deepEqual(state.heldDuckIdsByHand, [[], [101]]);
+
+  setHandPosition(state, state.hands[1].x + 20, state.hands[1].y, 1);
+  advance(state, 1);
+  assert.ok(Math.abs(rightDuck.x - state.hands[1].x) < 20);
+  assert.equal(rightDuck.protected, true);
 });
 
 test("an empty grab leaves stamina available and cannot be released", () => {
