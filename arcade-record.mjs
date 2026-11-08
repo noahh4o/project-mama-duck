@@ -1,0 +1,3 @@
+export const RECORD_KEY='mama-duck-endless-record-v1';
+export function loadRecord(storage){try{const r=JSON.parse(storage.getItem(RECORD_KEY));if(!r||!Number.isFinite(r.score))return null;return r;}catch{return null;}}
+export function saveRecord(storage,s){const prior=loadRecord(storage);const record={score:s.score,time:s.time,maxFlock:s.maxFlock,rescues:s.stats.rescues,avoided:s.stats.dodges,recruited:s.stats.recruited};if(prior&&prior.score>=record.score)return{record:prior,isNew:false};try{storage.setItem(RECORD_KEY,JSON.stringify(record));return{record,isNew:true};}catch{return{record,isNew:true,persisted:false};}}

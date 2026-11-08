@@ -12,6 +12,8 @@ const files = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/style.css', 'style.css'],
+  ...['endless.mjs', 'endless-app.mjs', 'arcade-record.mjs', 'homeward.mjs', 'homeward-app.mjs', 'homeward-art.mjs', 'controls-art.mjs', 'homeward.css'].map(path => [`/${path}`, path]),
+  ...['hands/hands.mjs', 'hands/tracker.mjs', 'hands/gestures.mjs', 'hands/advanced.mjs', 'hands/slash.mjs', 'hands/horns.mjs', 'hands/input-adapter.mjs', 'debug/hands-debug.html', 'debug/hands-debug.mjs', 'debug/control-lab.html', 'debug/control-lab.mjs'].map(path => [`/${path}`, path]),
   ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
 ]);
 const contentTypes = {

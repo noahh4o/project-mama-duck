@@ -129,8 +129,8 @@ export function createArena(zone = 'practice', { seed, progression = false, tuto
   const ducks = Array.from({ length: FLOCK_SIZE }, (_, id) => createDuck(id, id, FLOCK_SIZE));
   const progressionSeed = progression && live ? (seed ?? Math.floor(Math.random() * 0x100000000)) >>> 0 : null;
   const state = {
-    hand, handTarget: { ...hand }, ducks, deaths: 0, gameOver: false,
-    scroll: 0, obstacles: [], obstacleIndex: 0,
+    hand, handTarget: { ...hand }, hands: new Map([['primary', { id: 'primary', hand: { ...hand }, target: { ...hand }, gesture: 'NEUTRAL', trackingValid: false }]]), gapFormation: null, ducks, deaths: 0, gameOver: false,
+    scroll: 0, worldSpeed: 1, obstacles: [], obstacleIndex: 0,
     stamina: MAX_STAMINA, cooldown: 0, regenDelay: 0,
     heldDuckIds: [], holdTime: 0,
     zone: live ? zone : 'practice', tutorial: !live && tutorial,
@@ -153,7 +153,22 @@ export function setHandPosition(state, x, y) {
 
   state.handTarget.x = clamp(x, HAND_WIDTH / 2, WIDTH - HAND_WIDTH / 2);
   state.handTarget.y = clamp(y, HAND_HEIGHT / 2, HEIGHT - HAND_HEIGHT / 2);
+  const primary = state.hands?.get('primary');
+  if (primary) primary.target = { ...state.handTarget };
 }
+
+export function setHandStates(state, hands = []) {
+  if (state.gameOver) return;
+  const next = new Map();
+  for (const input of hands) {
+    if (!input?.handId || !input.trackingValid || !Number.isFinite(input.target?.x) || !Number.isFinite(input.target?.y)) continue;
+    const previous = state.hands.get(input.handId) ?? { id: input.handId, hand: { ...state.hand }, target: { ...state.hand } };
+    previous.target = { x: clamp(input.target.x, HAND_WIDTH / 2, WIDTH - HAND_WIDTH / 2), y: clamp(input.target.y, HAND_HEIGHT / 2, HEIGHT - HAND_HEIGHT / 2) };
+    previous.gesture = input.gesture; previous.trackingValid = true; next.set(input.handId, previous);
+  }
+  if (next.size) state.hands = next;
+}
+export function setGapFormation(state, center) { state.gapFormation = center && Number.isFinite(center.x) && Number.isFinite(center.y) ? { x: center.x, y: center.y, remaining: .45 } : null; }
 
 function loseDuck(state, duck) {
   if (state.tutorial) return;
@@ -343,6 +358,13 @@ function nudgeDuck(duck, hand) {
   duck.x = hand.x + Math.cos(angle) * CONTACT_DISTANCE;
   duck.y = hand.y + Math.sin(angle) * CONTACT_DISTANCE;
 }
+function steeringVector(duck, hand, gesture) {
+  const dx = hand.x - duck.x, dy = hand.y - duck.y, distance = Math.hypot(dx, dy) || 1;
+  if (distance > 120) return { x: 0, y: 0 };
+  const falloff = 1 - distance / 120;
+  const strength = (gesture === 'FOLLOW' ? 1 : -1) * (.45 + falloff * 1.15);
+  return { x: dx / distance * strength, y: dy / distance * strength };
+}
 
 function overlapsBarrier(duck, barrier) {
   const halfWidth = DUCK_WIDTH / 2;
@@ -368,12 +390,19 @@ function updateBurn(duck, touchingFire, dt) {
 
 function advanceArena(state, dt) {
   const previousTime = (state.scroll - state.stageStartScroll) / SCROLL_SPEED;
-  const scroll = SCROLL_SPEED * dt;
+  const phase = state.majorAttackScheduler?.state?.phase;
+  const targetSpeed = phase === 'TELEGRAPH' ? .45 : phase === 'EXECUTE' ? .65 : phase === 'RECOVER' ? 1 : 1;
+  state.worldSpeed += (targetSpeed - state.worldSpeed) * Math.min(1, dt * 5);
+  const scroll = SCROLL_SPEED * dt * state.worldSpeed;
   state.scroll += scroll;
   const time = previousTime + dt;
 
   state.stageNotice = Math.max(0, state.stageNotice - dt);
+  if (state.gapFormation) { state.gapFormation.remaining -= dt; if (state.gapFormation.remaining <= 0) state.gapFormation = null; }
   advanceHand(state, dt);
+  for (const entry of state.hands.values()) { advanceHand({ hand: entry.hand, handTarget: entry.target }, dt); }
+  const primary = state.hands.get('primary') ?? state.hands.values().next().value;
+  if (primary) { state.hand = primary.hand; state.handTarget = primary.target; }
   tickHandActions(state, dt);
   for (const log of state.obstacles) log.x -= scroll;
 
@@ -391,7 +420,18 @@ function advanceArena(state, dt) {
     duck.x += clamp(duck.cruiseX + Math.sin(time + phase) * 6 - duck.x, -cruiseSpeed, cruiseSpeed);
     duck.y += (Math.sin(time * 1.6 + phase) - Math.sin(previousTime * 1.6 + phase)) * 4;
 
-    if (state.cooldown === 0 && state.heldDuckIds.length === 0) nudgeDuck(duck, state.hand);
+    if (state.gapFormation && state.heldDuckIds.length === 0) {
+      const side = duck.x < state.gapFormation.x ? -1 : 1;
+      duck.x += side * 1.8;
+    } else if (state.cooldown === 0 && state.heldDuckIds.length === 0) {
+      const activeHands = [...state.hands.values()].filter(entry => entry.trackingValid && (entry.gesture === 'FOLLOW' || entry.gesture === 'REPEL'));
+      if (activeHands.length) {
+        const force = activeHands.reduce((sum, entry) => { const vector = steeringVector(duck, entry.hand, entry.gesture); return { x: sum.x + vector.x, y: sum.y + vector.y }; }, { x: 0, y: 0 });
+        const magnitude = Math.hypot(force.x, force.y);
+        if (magnitude > 0) { const amount = Math.min(2.4, magnitude); duck.x += force.x / magnitude * amount; duck.y += force.y / magnitude * amount; }
+      }
+      else nudgeDuck(duck, state.hand);
+    }
     duck.x = Math.min(WIDTH - DUCK_WIDTH / 2, duck.x);
     duck.y = clamp(duck.y, DUCK_HEIGHT / 2, HEIGHT - DUCK_HEIGHT / 2);
 

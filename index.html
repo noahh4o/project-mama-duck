@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#142625">
   <title>Motherduck</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./homeward.css">
 </head>
 <body>
   <main class="screen" aria-label="Motherduck game">
@@ -53,6 +53,7 @@
       <button type="button" data-action="defenseSlam" aria-keyshortcuts="C"><kbd>C</kbd> Defense slam</button>
       <button type="button" data-action="grab" aria-keyshortcuts="Space"><kbd>Space</kbd> <span id="grab-label">Grab</span></button>
     </div>
+    <div class="input-mode" id="input-mode" hidden><button id="keyboard-mode" type="button">Keyboard / Mouse</button><button id="webcam-mode" type="button">Webcam</button><button id="stop-webcam" type="button" hidden>Stop Webcam</button><small id="webcam-status" role="status"></small></div>
 
     <div class="menu" id="start-screen">
       <div class="card">
@@ -79,6 +80,6 @@
       </div>
     </div>
   </main>
-  <script type="module" src="./game.mjs"></script>
+  <script type="module" src="./endless-app.mjs"></script>
 </body>
 </html>

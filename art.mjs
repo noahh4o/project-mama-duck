@@ -175,6 +175,14 @@ export function createRenderer(context) {
     if (inRiver) drawRiver(context, state.scroll);
     else if (burned) drawBurnedForest(context, state.scroll, flames);
     else drawForest(context, state.scroll);
+    for (const enemy of state.enemies) {
+      if (enemy.hp > 0 && enemy.type === 'fox' && enemy.attackPhase === 'TELEGRAPH' && enemy.majorAttack) {
+        const y = Math.round(enemy.majorAttack.laneY), pulse = 0.22 + 0.18 * Math.sin(performance.now() / 120);
+        context.fillStyle = `rgba(244,80,80,${pulse})`; context.fillRect(0, y - 14, context.canvas.width, 28);
+        context.strokeStyle = '#ffb36b'; context.lineWidth = 3; context.beginPath(); context.moveTo(Math.round(enemy.x), y); context.lineTo(18, y); context.stroke();
+        context.fillStyle = '#fff0b8'; context.font = 'bold 10px system-ui'; context.fillText('FOX ATTACK', Math.max(4, Math.round(enemy.x - 26)), y - 18);
+      }
+    }
     if (tutorialTarget) {
       const { x, y } = tutorialTarget;
       drawWarning(context, { x: x - 15, y: y - 13, width: 30, height: 26 }, '#ffe1a8');

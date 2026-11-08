@@ -21,6 +21,7 @@ import {
   hitDuck,
   performHandAction,
   setHandPosition,
+  setHandStates,
   stepArena,
 } from "./arena.mjs";
 
@@ -32,6 +33,17 @@ test("a fresh run has enough living ducks to reach the death limit", () => {
   assert.ok(state.ducks.every(({ alive, protected: isProtected }) => alive && !isProtected));
   assert.equal(state.deaths, 0);
   assert.equal(state.gameOver, false);
+});
+test('neutral webcam hands are intangible while FOLLOW and REPEL steer intentionally', () => {
+  const neutral = createArena('practice'); const baseline = createArena('practice'); setHandStates(neutral, [{ handId: 'h1', gesture: 'NEUTRAL', trackingValid: true, target: { x: 124, y: HEIGHT / 2 } }]); stepArena(neutral, 1 / 60); stepArena(baseline, 1 / 60); assert.deepEqual({ x: neutral.ducks[0].x, y: neutral.ducks[0].y }, { x: baseline.ducks[0].x, y: baseline.ducks[0].y });
+  const follow = createArena('practice'); const fDuck = follow.ducks[0]; fDuck.x = 200; fDuck.y = HEIGHT / 2; setHandStates(follow, [{ handId: 'h1', gesture: 'FOLLOW', trackingValid: true, target: { x: 124, y: HEIGHT / 2 } }]); stepArena(follow, 1 / 60); assert.ok(fDuck.x < 200);
+  const repel = createArena('practice'); const rDuck = repel.ducks[0]; rDuck.x = 130; rDuck.y = HEIGHT / 2; setHandStates(repel, [{ handId: 'h1', gesture: 'REPEL', trackingValid: true, target: { x: 124, y: HEIGHT / 2 } }]); stepArena(repel, 1 / 60); assert.ok(rDuck.x > 130);
+});
+test('hand steering remains directionally consistent across frame rates', () => {
+  const run = (dt, frames) => { const state = createArena('practice'); state.ducks[0].x = 220; state.ducks[0].y = HEIGHT / 2; setHandStates(state, [{ handId: 'h1', gesture: 'FOLLOW', trackingValid: true, target: { x: 80, y: HEIGHT / 2 } }]); for (let i = 0; i < frames; i += 1) stepArena(state, dt); return state.ducks[0].x; };
+  const at30 = run(1 / 30, 30), at60 = run(1 / 60, 60), at120 = run(1 / 120, 120);
+  assert.ok(at30 < 220 && at60 < 220 && at120 < 220);
+  assert.ok(Math.max(at30, at60, at120) - Math.min(at30, at60, at120) < 18);
 });
 
 test("a hit kills an unprotected duck once and ignores a protected duck", () => {

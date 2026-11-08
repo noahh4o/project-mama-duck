@@ -1,0 +1,14 @@
+export function hornsFeatures(hand, options = {}) {
+  const f = hand?.gestureFeatures;
+  if (hand?.trackingStatus !== 'tracked' || !f?.valid) return { hornsDetected: false, quality: 0, rejectionReason: 'tracking-not-confirmed' };
+  const ext = f.extension.slice(1, 5), curl = f.curled.slice(1, 5);
+  const index = ext[0] >= (options.extension ?? 1.05), middle = curl[1], ring = curl[2], pinky = ext[3] >= (options.extension ?? 1.05);
+  const thumbTucked = f.curled[0] || f.palmProximity?.[0] < (options.thumbProximity ?? .85);
+  const valid = index && middle && ring && pinky && thumbTucked;
+  const rejectionReason = valid ? null : !index ? 'index-not-extended' : !pinky ? 'pinky-not-extended' : !middle ? 'middle-not-curled' : !ring ? 'ring-not-curled' : !thumbTucked ? 'thumb-not-tucked' : 'horn-finger-geometry-invalid';
+  return { hornsDetected: valid, quality: (Number(index) + Number(middle) + Number(ring) + Number(pinky) + Number(thumbTucked)) / 5, fingerExtensionEvidence: { index: ext[0], pinky: ext[3] }, fingerCurlEvidence: { middle: curl[1], ring: curl[2] }, thumbEvidence: thumbTucked, rejectionReason };
+}
+export function createHornsRecognizer(options = {}) {
+  const holdMs = options.holdMs ?? 180, cooldownMs = options.cooldownMs ?? 450, graceMs = options.graceMs ?? 75, states = new Map(); let qualificationCount = 0;
+  return { reset() { states.clear(); qualificationCount = 0; }, getQualificationCount() { return qualificationCount; }, update(hands, now) { const events = [], output = hands.map(hand => { const s = states.get(hand.id) ?? { since: null, cooldownUntil: 0, releasedAt: 0, lostAt: null, count: 0, fired: false }; const f = hornsFeatures(hand, options); if (hand.trackingStatus !== 'tracked') { s.lostAt ??= now; if (now - s.lostAt > graceMs) s.since = null; states.set(hand.id, s); return { ...hand, horns: { ...f, state: 'RECOVERY', holdMs: 0, cooldownMs: Math.max(0, s.cooldownUntil - now), qualificationCount: s.count } }; } s.lostAt = null; if (!f.hornsDetected) { s.since = null; s.releasedAt = now; s.fired = false; } else if (!s.fired && s.since == null && now >= s.cooldownUntil) s.since = now; const armed = s.since != null, qualified = armed && now - s.since >= holdMs; if (qualified && now >= s.cooldownUntil) { const event = { type: 'ATTACK', source: 'horns-diagnostic', timestamp: now, handId: hand.id }; events.push(event); qualificationCount++; s.count++; s.cooldownUntil = now + cooldownMs; s.since = null; s.fired = true; } states.set(hand.id, s); return { ...hand, horns: { ...f, state: s.fired ? 'RECOVERY' : qualified ? 'ATTACK_QUALIFIED' : armed ? 'HORNS_CANDIDATE' : 'IDLE', holdMs: armed ? now - s.since : 0, cooldownMs: Math.max(0, s.cooldownUntil - now), qualificationCount: s.count } }; }); return { hands: output, events, qualificationCount }; } };
+}

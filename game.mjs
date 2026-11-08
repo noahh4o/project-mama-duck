@@ -1,10 +1,12 @@
 import {
   ACTION_COSTS, canPerformHandAction, createArena, DEATH_LIMIT, HEIGHT, MAX_STAMINA,
-  performHandAction, PIXELS_PER_METER, setHandPosition, STAGE_DISTANCE,
+  performHandAction, PIXELS_PER_METER, setGapFormation, setHandPosition, setHandStates, STAGE_DISTANCE,
   STAGE_REINFORCEMENTS, stepArena, WIDTH,
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
 import { advanceTutorial, createTutorial, getTutorialLesson, TUTORIAL_LESSON_COUNT } from './tutorial.mjs';
+import { createHandsController } from './hands/hands.mjs';
+import { createGameplayInputAdapter } from './hands/input-adapter.mjs';
 
 const canvas = document.querySelector('canvas');
 const remaining = document.querySelector('#remaining');
@@ -34,6 +36,12 @@ const staminaMeter = document.querySelector('#stamina-meter');
 staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
 const staminaFill = document.querySelector('#stamina-fill');
 const handStatus = document.querySelector('#hand-status');
+const webcamMode = document.querySelector('#webcam-mode'), keyboardMode = document.querySelector('#keyboard-mode'), stopWebcam = document.querySelector('#stop-webcam'), webcamStatus = document.querySelector('#webcam-status');
+const webcamVideo = document.createElement('video'); webcamVideo.autoplay = true; webcamVideo.muted = true; webcamVideo.playsInline = true;
+const handsController = createHandsController();
+const inputAdapter = createGameplayInputAdapter({ width: WIDTH, height: HEIGHT, mirror: true });
+let webcamActive = false, webcamState = { hands: [] };
+handsController.on('stateChange', state => { webcamState = state; });
 const render = createRenderer(canvas.getContext('2d'));
 const shortcuts = new Map([['z', 'punch'], ['x', 'attackSlam'], ['c', 'defenseSlam'], [' ', 'grab']]);
 const directions = new Map([
@@ -125,7 +133,12 @@ function enterPlay() {
   actionBar.hidden = false;
   canvas.tabIndex = 0;
   canvas.focus();
+  document.querySelector('#input-mode').hidden = false;
 }
+
+webcamMode.addEventListener('click', async () => { try { inputAdapter.setViewport({ width: WIDTH, height: HEIGHT, mirror: true }); await handsController.init({ video: webcamVideo }); await handsController.start(); webcamActive = true; webcamMode.hidden = true; keyboardMode.hidden = false; stopWebcam.hidden = false; webcamStatus.textContent = 'Webcam active'; } catch (error) { webcamStatus.textContent = `Webcam unavailable: ${error.message}`; } });
+keyboardMode.addEventListener('click', () => { webcamActive = false; webcamMode.hidden = false; keyboardMode.hidden = true; stopWebcam.hidden = true; webcamStatus.textContent = 'Keyboard / mouse active'; });
+stopWebcam.addEventListener('click', () => { webcamActive = false; handsController.stop(); webcamMode.hidden = false; keyboardMode.hidden = true; stopWebcam.hidden = true; webcamStatus.textContent = 'Webcam stopped'; });
 
 function startRun() {
   tutorial = null;
@@ -208,7 +221,9 @@ function updateStatus() {
     staminaFill.style.transform = `scaleX(${Number(stamina) / MAX_STAMINA})`;
   }
   staminaMeter.classList.toggle('cooldown', cooldown > 0);
-  const status = cooldown ? `Cooldown ${cooldown}s` : held ? `Holding ${held}` : '';
+  const status = webcamActive
+    ? `Webcam · ${webcamState.hands?.filter(hand => hand.trackingStatus === 'tracked').map(hand => `${hand.id}: ${hand.gesture}`).join(' · ') || 'tracking…'}`
+    : cooldown ? `Cooldown ${cooldown}s` : held ? `Holding ${held}` : '';
   if (handStatus.textContent !== status) handStatus.textContent = status;
   const grabText = held ? 'Release' : 'Grab';
   if (grabLabel.textContent !== grabText) grabLabel.textContent = grabText;
@@ -236,6 +251,19 @@ function frame(now) {
   lastFrame = now;
 
   if (running && !arena.gameOver) {
+    if (webcamActive) {
+      const mapped = inputAdapter.update(webcamState, webcamState.events ?? []);
+      setHandStates(arena, mapped.hands);
+      for (const command of mapped.commands) {
+        if (command.type === 'attack' && running) performHandAction(arena, 'attackSlam');
+        else if (command.type === 'grab' && running) performHandAction(arena, 'grab');
+      }
+      const gapCommand = mapped.commands.find(command => command.type === 'gap');
+      if (gapCommand) { const points = mapped.hands.map(hand => hand.target); setGapFormation(arena, points.length ? { x: points.reduce((sum, point) => sum + point.x, 0) / points.length, y: points.reduce((sum, point) => sum + point.y, 0) / points.length } : null); }
+      const handCommand = mapped.commands.find(command => command.type === 'follow' || command.type === 'repel' || command.type === 'grab');
+      if (handCommand) setHandPosition(arena, handCommand.target.x, handCommand.target.y);
+      handStatus.textContent = `Webcam · ${mapped.hands.map(hand => `${hand.handId} ${hand.gesture}`).join(' · ') || 'tracking…'}`;
+    }
     let dx = 0;
     let dy = 0;
     for (const key of pressed) {
