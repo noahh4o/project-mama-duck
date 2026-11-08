@@ -151,21 +151,25 @@ function pixelSprite(rows, palette) {
   return sprite;
 }
 function loadImage(src) {
-  const image = new Image();
-  image.src = src;
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load ${src}`));
+    image.src = src;
+  });
 }
 
 
-export function createRenderer(context) {
+export async function createRenderer(context) {
   const duck = pixelSprite(duckPixels, {
     n: '#334d65', t: '#8bc2c4', s: '#709caf', k: '#102e3d', o: '#f49a58',
   });
-  const [hand, handHit, handSleep, handGrab] = [
+  const [hand, handHit, handSleep, handGrab] = await Promise.all([
     loadImage('./assets/handOpen.png'),
     loadImage('./assets/handHit.png'),
     loadImage('./assets/handSleep.png'),
     loadImage('./assets/handGrab.png')
-  ]
+  ]);
   const enemySprites = Object.fromEntries(
     Object.entries(enemyArt).map(([type, { rows, colors }]) => [type, pixelSprite(rows, colors)]),
   );
@@ -209,12 +213,12 @@ export function createRenderer(context) {
       drawDuckBurn(context, duckling, state.scroll, flames);
     }
     if (state.actionEffect) drawActionEffect(context, state.actionEffect);
-    const handImg = hand;
-    // if (state.cooldown > 0) {
-    //   handImg = handSleep;
-    // } else if (false) {
-    //   handImg = handGrab;
-    // }
+    let handImg = hand;
+    if (state.cooldown > 0) {
+      handImg = handSleep;
+    } else if (state.heldDuckIds.length > 0) {
+      handImg = handGrab;
+    }
     if (handImg != null) {
       context.drawImage(
         handImg,
