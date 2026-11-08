@@ -30,6 +30,7 @@ const enterArena = document.querySelector('#enter-arena');
 const actionBar = document.querySelector('#hand-actions');
 const actionButtons = [...actionBar.querySelectorAll('button')];
 const staminaMeter = document.querySelector('#stamina-meter');
+const staminaWidget = document.querySelector('#stamina-widget');
 staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
 const staminaFill = document.querySelector('#stamina-fill');
 const handStatus = document.querySelector('#hand-status');
@@ -238,6 +239,15 @@ function updateStatus() {
     const progress = `Stage ${arena.stage} · ${stageMeters}/${STAGE_DISTANCE} m`;
     if (stageProgress.textContent !== progress) stageProgress.textContent = progress;
   }
+  const screenRect = canvas.parentElement.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+
+  staminaWidget.style.left =
+    `${canvasRect.left - screenRect.left + arena.hand.x * canvasRect.width / WIDTH}px`;
+  staminaWidget.style.top =
+    `${canvasRect.top - screenRect.top + arena.hand.y * canvasRect.height / HEIGHT}px`;
+
+
   remaining.textContent = arena.ducks.filter(({ alive }) => alive).length;
   losses.textContent = `${arena.deaths} / ${DEATH_LIMIT}`;
   distance.textContent = `${Math.floor(arena.scroll / PIXELS_PER_METER)} m`;
@@ -246,8 +256,11 @@ function updateStatus() {
   const cooldown = Math.ceil(arena.cooldown);
   if (staminaMeter.getAttribute('aria-valuenow') !== stamina) {
     staminaMeter.setAttribute('aria-valuenow', stamina);
-    staminaFill.style.transform = `scaleX(${Number(stamina) / MAX_STAMINA})`;
-  }
+ }
+ staminaMeter.style.setProperty(
+  '--stamina',
+  `${arena.stamina / MAX_STAMINA * 100}%`,
+); 
   staminaMeter.classList.toggle('cooldown', cooldown > 0);
   const status = cooldown ? `Cooldown ${cooldown}s` : held ? `Holding ${held}` : '';
   if (handStatus.textContent !== status) handStatus.textContent = status;
