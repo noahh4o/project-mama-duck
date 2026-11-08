@@ -12,12 +12,17 @@ const files = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/style.css', 'style.css'],
+  ['/assets/handOpen.png', 'assets/handOpen.png'],
+  ['/assets/handHit.png', 'assets/handHit.png'],
+  ['/assets/handSleep.png', 'assets/handSleep.png'],
+  ['/assets/handGrab.png', 'assets/handGrab.png'],
   ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
 ]);
 const contentTypes = {
   html: 'text/html; charset=utf-8',
   css: 'text/css; charset=utf-8',
   mjs: 'text/javascript; charset=utf-8',
+  png: 'image/png',
 };
 
 const server = createServer(async (request, response) => {
