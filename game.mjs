@@ -32,7 +32,6 @@ const actionButtons = [...actionBar.querySelectorAll('button')];
 const staminaMeter = document.querySelector('#stamina-meter');
 const staminaWidget = document.querySelector('#stamina-widget');
 staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
-const staminaFill = document.querySelector('#stamina-fill');
 const handStatus = document.querySelector('#hand-status');
 const render = await createRenderer(canvas.getContext('2d'));
 const shortcuts = new Map([['z', 'punch'], ['x', 'attackSlam'], ['c', 'defenseSlam'], [' ', 'grab']]);
@@ -68,7 +67,9 @@ canvas.addEventListener('pointerdown', moveHand);
 
 function triggerAction(action) {
   if (!running || (tutorial && getTutorialLesson(tutorial).action !== action)) return;
+  const previousStamina = arena.stamina;
   if (!performHandAction(arena, action)) return;
+  if (arena.stamina < previousStamina) staminaWidget.hidden = false;
   if (tutorial) advanceTutorial(tutorial, action);
   renderArena();
   updateStatus();
@@ -145,11 +146,12 @@ window.addEventListener('blur', () => {
 canvas.addEventListener('blur', () => pressed.clear());
 
 function renderArena() {
-  render(arena, tutorial ? getTutorialLesson(tutorial).target : null);
+  render(arena, tutorial ? getTutorialLesson(tutorial).target : null, !staminaWidget.hidden && !arena.gameOver);
 }
 
 function loadArena(nextArena) {
   arena = nextArena;
+  staminaWidget.hidden = true;
   lastFrame = null;
   pressed.clear();
   endScreen.hidden = true;
@@ -238,15 +240,6 @@ function updateStatus() {
     const progress = `Stage ${arena.stage} · ${stageMeters}/${STAGE_DISTANCE} m`;
     if (stageProgress.textContent !== progress) stageProgress.textContent = progress;
   }
-  const screenRect = canvas.parentElement.getBoundingClientRect();
-  const canvasRect = canvas.getBoundingClientRect();
-
-  staminaWidget.style.left =
-    `${canvasRect.left - screenRect.left + arena.hand.x * canvasRect.width / WIDTH}px`;
-  staminaWidget.style.top =
-    `${canvasRect.top - screenRect.top + arena.hand.y * canvasRect.height / HEIGHT}px`;
-
-
   remaining.textContent = arena.ducks.filter(({ alive }) => alive).length;
   losses.textContent = `${arena.deaths} / ${DEATH_LIMIT}`;
   distance.textContent = `${Math.floor(arena.scroll / PIXELS_PER_METER)} m`;
@@ -255,12 +248,7 @@ function updateStatus() {
   const cooldown = Math.ceil(arena.cooldown);
   if (staminaMeter.getAttribute('aria-valuenow') !== stamina) {
     staminaMeter.setAttribute('aria-valuenow', stamina);
- }
- staminaMeter.style.setProperty(
-  '--stamina',
-  `${arena.stamina / MAX_STAMINA * 100}%`,
-); 
-  staminaMeter.classList.toggle('cooldown', cooldown > 0);
+  }
   const status = cooldown ? `Cooldown ${cooldown}s` : held ? `Holding ${held}` : '';
   if (handStatus.textContent !== status) handStatus.textContent = status;
   const lesson = tutorial ? getTutorialLesson(tutorial) : null;
@@ -309,6 +297,7 @@ function frame(now) {
       result.textContent = `The flock made it ${distance.textContent}.`;
       runTools.hidden = true;
       eventNotice.hidden = true;
+      staminaWidget.hidden = true;
       actionBar.hidden = true;
       canvas.tabIndex = -1;
       endScreen.hidden = false;
