@@ -23,13 +23,13 @@ const LESSONS = [
   },
   {
     title: 'Grab',
-    prompt: 'Move close to the duck, then press Space or tap Grab to protect it.',
+    prompt: 'Move close to the duck, then hold Space or Grab to protect it.',
     action: 'grab',
     duck: { x: 169, y: 100 },
   },
   {
     title: 'Release',
-    prompt: 'Press Space again or tap Release before the duck slips out on its own.',
+    prompt: 'Release Space or let go of Grab before the duck slips out on its own.',
     action: 'release',
   },
   {
