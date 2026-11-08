@@ -1,6 +1,6 @@
 import {
   ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, alligatorJaw, countExposedDucks,
-  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH,
+  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE
 } from './arena.mjs';
 
 const duckPixels = [
@@ -206,9 +206,9 @@ export function createRenderer(context) {
     if (state.actionEffect) drawActionEffect(context, state.actionEffect);
     context.drawImage(
       state.cooldown > 0 ? tiredHand : hand,
-      Math.round(state.hand.x - HAND_WIDTH / 2),
-      Math.round(state.hand.y - HAND_HEIGHT / 2),
-      HAND_WIDTH, HAND_HEIGHT,
+      Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
+      Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
+      HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
     );
     for (const duckling of heldDucks) {
       const x = Math.round(duckling.x - DUCK_WIDTH / 2);
