@@ -174,7 +174,7 @@ export async function createRenderer(context) {
   const flames = flameFrames.map((rows) => pixelSprite(rows, {
     r: '#c45344', o: '#f68b54', y: '#ffc678',
   }));
-  const staminaRing = createStaminaRing();
+  const staminaRing = await createStaminaRing();
   context.imageSmoothingEnabled = false;
 
   return (state, tutorialTarget, showStamina) => {
@@ -243,36 +243,35 @@ export async function createRenderer(context) {
 
 const STAMINA_SEGMENTS = 12;
 
-function createStaminaRing() {
-  const radius = 10;
-  const size = radius * 2 + 1;
-  const fullTurn = 2 * Math.PI;
-  const layout = Array.from({ length: size }, (_, row) => Array.from({ length: size }, (_, column) => {
-    const x = column - radius;
-    const y = row - radius;
-    const distance = Math.hypot(x, y);
-    if (distance > radius || distance < radius - 4) return { kind: '.' };
-    const angle = (Math.atan2(x, -y) + fullTurn) % fullTurn;
-    const slot = angle / fullTurn * STAMINA_SEGMENTS;
-    const segment = Math.floor(slot);
-    if (distance > radius - 1 || distance < radius - 3 || slot - segment > 0.84) return { kind: 'e' };
-    return { kind: distance > radius - 2 ? 'l' : 'g', segment };
-  }));
-  const rowsFor = (filled) => layout.map((row) => row.map(({ kind, segment }) => (
-    segment === undefined || segment < filled ? kind : 'u'
-  )).join(''));
-  const palette = { e: '#213034', l: '#fff0ae', g: '#ffc653', u: '#59636a' };
-  return {
-    radius,
-    frames: Array.from({ length: STAMINA_SEGMENTS + 1 }, (_, filled) => pixelSprite(rowsFor(filled), palette)),
-    cooldown: pixelSprite(rowsFor(0), { e: '#8d4748', u: '#4f383f' }),
-  };
+const staminaFrameSources = [
+  './assets/stamina-00.png',  // empty
+  './assets/stamina-01.png',
+  './assets/stamina-02.png',
+  './assets/stamina-03.png',
+  './assets/stamina-04.png',
+  './assets/stamina-05.png',
+  './assets/stamina-06.png',
+  './assets/stamina-07.png',
+  './assets/stamina-08.png',
+  './assets/stamina-09.png',
+  './assets/stamina-10.png',
+  './assets/stamina-11.png',
+  './assets/stamina-12.png', // full
+];
+
+async function createStaminaRing() {
+  const [frames, cooldown] = await Promise.all([
+    Promise.all(staminaFrameSources.map(loadImage)),
+    loadImage('./assets/stamina-00.png'),
+  ]);
+
+  return { radius: 8, frames, cooldown };
 }
 
 function drawStaminaRing(context, { hand, stamina, cooldown }, ring) {
   const { radius } = ring;
-  const offsetX = HAND_WIDTH * HAND_SCALE * 0.4;
-  const offsetY = HAND_HEIGHT * HAND_SCALE * 0.4;
+  const offsetX = HAND_WIDTH * HAND_SCALE * 0.38;
+  const offsetY = HAND_HEIGHT * HAND_SCALE * 0.35;
   const x = Math.min(WIDTH - radius - 1, Math.round(hand.x + offsetX));
   const y = Math.min(HEIGHT - radius - 1, Math.round(hand.y + offsetY));
   const filled = Math.ceil(stamina / MAX_STAMINA * STAMINA_SEGMENTS);
@@ -397,10 +396,10 @@ function drawAlligator(context, enemy, exposedDuckCount) {
 
 function drawActionEffect(context, { action, x, y, radius }) {
   const color = {
-    attackSlam: '#f3a461', defenseSlam: '#bde8cd',
+    punch: '#f4dfb2', attackSlam: '#f3a461', defenseSlam: '#bde8cd',
     grab: '#f4dfb2', release: '#bde8cd',
   }[action];
-  const points = 20;
+  const points = action === 'punch' ? 8 : 20;
   for (let point = 0; point < points; point += 1) {
     const angle = point * 2 * Math.PI / points;
     const dotX = Math.round(x + Math.cos(angle) * radius);
