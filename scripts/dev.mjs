@@ -7,7 +7,6 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   console.error('Set DEV_PORT to a whole number between 1 and 65535.');
   process.exit(1);
 }
-
 const files = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
@@ -17,9 +16,11 @@ const files = new Map([
   ['/assets/handSleep.png', 'assets/handSleep.png'],
   ['/assets/handGrab.png', 'assets/handGrab.png'],
   ['/assets/duckling.png', 'assets/duckling.png'],
+  ...['00', '01', '02', '03', '04', '05', '06', '07','08','09','10','11','12'].map((module) => [`/assets/stamina-${module}.png`, `assets/stamina-${module}.png`]),
   ['/assets/pixelify-sans.woff2', 'assets/pixelify-sans.woff2'],
   ...['arena', 'art', 'audio', 'enemies', 'events', 'game', 'tutorial', 'classic-input'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
   ...['hands', 'tracker', 'gestures', 'advanced', 'horns', 'input-adapter'].map((module) => [`/hands/${module}.mjs`, `hands/${module}.mjs`]),
+
 ]);
 const contentTypes = {
   html: 'text/html; charset=utf-8',
