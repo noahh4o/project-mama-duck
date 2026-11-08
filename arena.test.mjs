@@ -317,7 +317,7 @@ test("the hand can slide a duck clear of a log while it is being pushed", () => 
   assert.equal(state.deaths, 0);
 });
 
-test("punch hits only the nearest enemy, and attack slam damages each enemy in range once", () => {
+test("attack slam damages each enemy in range once", () => {
   const state = createArena();
   const [distantEnemy] = state.enemies;
   const nearEnemy = { ...distantEnemy, x: state.hand.x + 14, y: state.hand.y };
@@ -325,17 +325,11 @@ test("punch hits only the nearest enemy, and attack slam damages each enemy in r
   distantEnemy.x = state.hand.x + 65;
   state.enemies.push(nearEnemy, nextEnemy);
 
-  assert.equal(performHandAction(state, "punch"), true);
-  assert.equal(nearEnemy.hp, 2);
-  assert.equal(nextEnemy.hp, 3);
-  assert.equal(distantEnemy.hp, 3);
-  assert.equal(state.stamina, MAX_STAMINA - ACTION_COSTS.punch);
-
   assert.equal(performHandAction(state, "attackSlam"), true);
-  assert.equal(nearEnemy.hp, 0);
+  assert.equal(nearEnemy.hp, 1);
   assert.equal(nextEnemy.hp, 1);
   assert.equal(distantEnemy.hp, 3);
-  assert.equal(state.stamina, MAX_STAMINA - ACTION_COSTS.punch - ACTION_COSTS.attackSlam);
+  assert.equal(state.stamina, MAX_STAMINA - ACTION_COSTS.attackSlam);
   advance(state, 10);
   assert.equal(nextEnemy.hp, 1);
 });
@@ -405,8 +399,8 @@ test("defense slam leaves a duck alone when it is already clear of the log's pat
 test("depletion locks every action but allows the hand to move without nudging", () => {
   const state = createArena();
   const baseline = createArena();
-  state.stamina = ACTION_COSTS.punch;
-  assert.equal(performHandAction(state, "punch"), true);
+  state.stamina = ACTION_COSTS.attackSlam;
+  assert.equal(performHandAction(state, "attackSlam"), true);
   assert.equal(state.stamina, 0);
   assert.ok(state.cooldown > 0);
   const frozen = structuredClone(state);
@@ -425,7 +419,7 @@ test("depletion locks every action but allows the hand to move without nudging",
   advance(state, 140);
   assert.equal(state.cooldown, 0);
   assert.equal(state.stamina, MAX_STAMINA);
-  assert.equal(canPerformHandAction(state, "punch"), true);
+  assert.equal(canPerformHandAction(state, "attackSlam"), true);
 });
 
 test("a grab times out during cooldown even when manual release is locked", () => {
@@ -446,18 +440,17 @@ test("a grab times out during cooldown even when manual release is locked", () =
 
 test("a fractional stamina remainder can be spent after regeneration starts", () => {
   const state = createArena();
-  state.stamina = 2 + ACTION_COSTS.attackSlam * 2 + ACTION_COSTS.punch;
+  state.stamina = 2 + ACTION_COSTS.attackSlam * 2;
   assert.equal(performHandAction(state, "attackSlam"), true);
   assert.equal(performHandAction(state, "attackSlam"), true);
-  assert.equal(performHandAction(state, "punch"), true);
   assert.equal(state.stamina, 2);
   advance(state, 40);
   assert.equal(state.stamina, 2);
   advance(state, 6);
   assert.ok(state.stamina > 2 && state.stamina < 3);
 
-  assert.equal(canPerformHandAction(state, "punch"), true);
-  assert.equal(performHandAction(state, "punch"), true);
+  assert.equal(canPerformHandAction(state, "attackSlam"), true);
+  assert.equal(performHandAction(state, "attackSlam"), true);
   assert.equal(state.stamina, 0);
   assert.ok(state.cooldown > 0);
 });

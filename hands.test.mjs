@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createTracker, mapPoint, smooth } from './hands/tracker.mjs';
 import { createHandsController } from './hands/hands.mjs';
 import { createGestureRecognizer, extractGestureFeatures, scoreGesture } from './hands/gestures.mjs';
-import { createAdvancedRecognizer, pointingFeatures } from './hands/advanced.mjs';
+import { createAdvancedRecognizer } from './hands/advanced.mjs';
 import { createHornsRecognizer, hornsFeatures } from './hands/horns.mjs';
 import { createGameplayInputAdapter, mapHandPosition } from './hands/input-adapter.mjs';
 const points = x => Array.from({ length: 21 }, () => ({ x, y: 0.5, z: 0 }));
@@ -22,7 +22,7 @@ function pose(kind = 'follow') {
 function pinchExtended() { const p = pose('follow'); p[4] = { x: .49, y: .52, z: 0 }; p[8] = { x: .5, y: .52, z: 0 }; return p; }
 function pinchPartial() { const p = pinchExtended(); for (const i of [12, 16]) p[i] = { x: .5, y: .52, z: 0 }; return p; }
 function tracked(id, landmarks) { return { id, landmarks, trackingStatus: 'tracked', position: { x: .5, y: .5 } }; }
-function advancedHand(id, x, y, gesture = 'NEUTRAL', pointing = false) { return { id, trackingStatus: 'tracked', gesture, position: { x, y }, gestureFeatures: { valid: true, extension: pointing ? [0.5, 1.3, .5, .5, .5] : [.5, .5, .5, .5, .5], curled: pointing ? [true, false, true, true, true] : [true, true, true, true, true] } }; }
+function advancedHand(id, x, y, gesture = 'NEUTRAL') { return { id, trackingStatus: 'tracked', gesture, position: { x, y } }; }
 test('mapping mirrors once, clamps, and handles letterbox and crop', () => {
   assert.deepEqual(mapPoint({ x: .2, y: .3 }, { mirror: true }), { x: .8, y: .3 });
   assert.deepEqual(mapPoint({ x: -1, y: 2 }), { x: 0, y: 1 });
@@ -97,43 +97,11 @@ test('gameplay adapter maps mirrored hands and deduplicates ATTACK events', () =
   assert.equal(adapter.update(state, [event]).commands.at(-1).type, 'attack');
   assert.equal(adapter.update(state, [event]).commands.some(c => c.type === 'attack'), false);
 });
-test('advanced recognizer emits one attack and cancels on loss', () => {
-  const r = createAdvancedRecognizer({ pointArmMs: 80, flickDistance: .1, flickSpeed: .3 });
-  assert.equal(r.update([advancedHand('h1', .2, .5, 'NEUTRAL', true)], 0).events.length, 0);
-  assert.equal(r.update([advancedHand('h1', .2, .5, 'NEUTRAL', true)], 100).events.length, 0);
-  const event = r.update([advancedHand('h1', .38, .5, 'NEUTRAL', true)], 200).events;
-  assert.equal(event[0].type, 'ATTACK'); assert.equal(r.update([advancedHand('h1', .4, .5, 'NEUTRAL', true)], 250).events.length, 0);
-  r.reset(); assert.equal(r.update([{ ...advancedHand('h1', .2, .5, 'NEUTRAL', true), trackingStatus: 'grace' }], 0).events.length, 0);
-});
-test('ATTACK detects each deliberate direction once and ignores stationary or slow motion', () => {
-  const cases = [
-    ['right', [.2, .5], [.38, .5], 'x', 1],
-    ['left', [.8, .5], [.62, .5], 'x', -1],
-    ['down', [.5, .2], [.5, .38], 'y', 1],
-    ['up', [.5, .8], [.5, .62], 'y', -1]
-  ];
-  for (const [, start, end, axis, sign] of cases) {
-    const r = createAdvancedRecognizer({ pointArmMs: 80, flickDistance: .1, flickSpeed: .3, flickCooldownMs: 200 });
-    r.update([advancedHand('h1', start[0], start[1], 'NEUTRAL', true)], 0);
-    r.update([advancedHand('h1', start[0], start[1], 'NEUTRAL', true)], 100);
-    const event = r.update([advancedHand('h1', end[0], end[1], 'NEUTRAL', true)], 200).events.find(e => e.type === 'ATTACK');
-    assert.ok(event); assert.ok(event.direction[axis] * sign > .9);
-    assert.equal(r.update([advancedHand('h1', end[0], end[1], 'NEUTRAL', true)], 250).events.length, 0);
-  }
-  const stationary = createAdvancedRecognizer({ pointArmMs: 80 });
-  stationary.update([advancedHand('h1', .5, .5, 'NEUTRAL', true)], 0);
-  stationary.update([advancedHand('h1', .5, .5, 'NEUTRAL', true)], 100);
-  assert.equal(stationary.update([advancedHand('h1', .53, .5, 'NEUTRAL', true)], 300).events.length, 0);
-});
-test('pointing geometry is rotation-tolerant and rejects open, fist, and grab poses', () => {
-  const pointing = { gestureFeatures: { valid: true, extension: [.8, 1.2, .5, .5, .5], curled: [true, false, true, true, true] } };
-  const thumbOut = { gestureFeatures: { valid: true, extension: [1.4, 1.2, .5, .5, .5], curled: [false, false, true, true, true] } };
-  const open = { gestureFeatures: { valid: true, extension: [1.2, 1.2, 1.2, 1.2, 1.2], curled: [false, false, false, false, false] } };
-  const fist = { gestureFeatures: { valid: true, extension: [.7, .7, .7, .7, .7], curled: [true, true, true, true, true] } };
-  assert.equal(pointingFeatures(pointing).pointing, true); assert.equal(pointingFeatures(thumbOut).pointing, true);
-  assert.equal(pointingFeatures(open).pointing, false); assert.equal(pointingFeatures(fist).pointing, false);
-  const cameraFacing = { gestureFeatures: { valid: true, extension: [.8, .48, .5, .5, .5], indexStraightness: .86, curled: [true, false, true, true, true] } };
-  assert.equal(pointingFeatures(cameraFacing).pointing, true);
+test('advanced recognizer ignores single-hand movement as an attack', () => {
+  const r = createAdvancedRecognizer();
+  r.update([advancedHand('h1', .2, .5)], 0);
+  r.update([advancedHand('h1', .2, .5)], 100);
+  assert.deepEqual(r.update([advancedHand('h1', .38, .5)], 200).events, []);
 });
 test('advanced recognizer requires converging distinct fists for GAP', () => {
   const r = createAdvancedRecognizer({ gapStartSeparation: .3, gapEndSeparation: .1 });

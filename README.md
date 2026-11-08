@@ -34,7 +34,7 @@ git push -u origin main
 
 ## Controls and code
 
-Use the in-game action buttons or press **Z** to punch, **X** for attack slam, **C** for defense slam, and **Space** to grab or release. Held ducks are protected until release or timeout. Emptying the stamina bar starts a cooldown. In the River, keep ducks clear of the dashed area around alligator jaws. It widens when more ducks are exposed.
+Use the in-game action buttons or press **X** for attack slam, **C** for defense slam, and **Space** to grab or release. Held ducks are protected until release or timeout. Emptying the stamina bar starts a cooldown. In the River, keep ducks clear of the dashed area around alligator jaws. It widens when more ducks are exposed.
 
 A meteor transforms Forest into Burned Forest during the run. Fallen logs push ducks backward. Ducks can cross ground fires, but burn damage builds on contact and lingers after they leave. Use defense slam to extinguish nearby ducks. Lightning can appear in any playable zone.
 
