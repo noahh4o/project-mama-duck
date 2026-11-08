@@ -98,8 +98,7 @@ function resetLiveZone(state, seed) {
   state.obstacleIndex = 0;
   state.meteor = null;
   state.lightning = null;
-  state.eventSchedule = createEventSchedule(state.zone, seed);
-  startEncounters(state);
+  state.eventSchedule = createEventSchedule(state.zone, state.stage, seed);  startEncounters(state);
 }
 
 function advanceStage(state) {
@@ -294,10 +293,14 @@ export function performHandAction(state, action) {
 
   const cost = ACTION_COSTS[action];
   if (cost > 0) {
-    state.stamina = Math.max(0, state.stamina - cost);
-    state.regenDelay = REGEN_DELAY;
-    if (state.stamina === 0) state.cooldown = COOLDOWN_SECONDS;
+  state.stamina = Math.max(0, state.stamina - cost);
+  state.regenDelay = REGEN_DELAY;
+
+  if (state.stamina === 0) {
+    state.cooldown = COOLDOWN_SECONDS;
+    releaseDucks(state);
   }
+}
   state.actionEffect = { action, ...state.hand, remaining: 0.28, radius };
   return true;
 }
