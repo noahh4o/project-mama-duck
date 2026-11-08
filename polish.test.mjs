@@ -45,6 +45,36 @@ function extent(ducks) {
   return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
 }
 
+function minimumPairDistance(ducks) {
+  let minimum = Infinity;
+  for (let first = 0; first < ducks.length - 1; first += 1) {
+    for (let second = first + 1; second < ducks.length; second += 1) {
+      minimum = Math.min(minimum, Math.hypot(
+        ducks[first].x - ducks[second].x,
+        ducks[first].y - ducks[second].y,
+      ));
+    }
+  }
+  return minimum;
+}
+
+function isolateMovement(state) {
+  state.enemies = [];
+  state.nextEncounterTime = Infinity;
+  state.nextRecruitTime = Infinity;
+  state.eventSchedule = { meteor: Infinity, lightning: Infinity };
+  state.stageStartScroll = 1e9;
+}
+
+function holdFollowAt(state, target = { x: 150, y: 90 }, handId = 'follow-hand') {
+  setHandStates(state, [{
+    handId, handedness: 'Right', gesture: 'FOLLOW', target, trackingValid: true,
+  }]);
+  const entry = state.hands.get(handId);
+  entry.hand = { ...target };
+  entry.target = { ...target };
+}
+
 test('two overlapping ducks separate gradually rather than jumping apart', () => {
   const state = arcade(2);
   state.ducks.forEach((duck) => { duck.x = 120; duck.y = 90; });
@@ -156,6 +186,61 @@ test('maximum supported flock separation remains computationally lightweight', (
   for (let frame = 0; frame < 120; frame += 1) applyDuckSeparation(state, 1 / 60);
   const elapsed = performance.now() - started;
   assert.ok(elapsed < 250, `24-duck separation took ${elapsed.toFixed(1)}ms`);
+});
+
+test('production FOLLOW cannot collapse a flock after fifteen seconds', () => {
+  const state = arcade(6);
+  isolateMovement(state);
+  state.ducks.forEach((duck) => Object.assign(duck, { x: 150, y: 90, cruiseX: 150 }));
+  holdFollowAt(state);
+  let severeOverlapFrames = 0;
+  let peakSettledMovement = 0;
+
+  for (let frame = 0; frame < 900; frame += 1) {
+    const before = state.ducks.map(({ x, y }) => ({ x, y }));
+    stepArena(state, 1 / 60);
+    if (frame >= 120) {
+      if (minimumPairDistance(state.ducks) < 8) severeOverlapFrames += 1;
+      state.ducks.forEach((duck, index) => {
+        peakSettledMovement = Math.max(peakSettledMovement, Math.hypot(
+          duck.x - before[index].x,
+          duck.y - before[index].y,
+        ));
+      });
+    }
+  }
+
+  assert.equal(state.ducks.filter(({ alive }) => alive).length, 6);
+  assert.equal(severeOverlapFrames, 0);
+  assert.ok(minimumPairDistance(state.ducks) >= 13);
+  assert.ok(extent(state.ducks) >= 24 && extent(state.ducks) <= 50);
+  assert.ok(peakSettledMovement < 1, `settled movement peaked at ${peakSettledMovement}`);
+});
+
+test('production FOLLOW keeps every supported flock size individually spaced', () => {
+  const results = new Map();
+  const started = performance.now();
+  for (const count of [2, 3, 6, 10, 24]) {
+    const state = arcade(count);
+    isolateMovement(state);
+    state.ducks.forEach((duck) => Object.assign(duck, { x: 150, y: 90, cruiseX: 150 }));
+    holdFollowAt(state);
+    simulate(state, 15, 1 / 60);
+    results.set(count, {
+      minimum: minimumPairDistance(state.ducks),
+      extent: extent(state.ducks),
+      living: state.ducks.filter(({ alive }) => alive).length,
+    });
+  }
+  const elapsed = performance.now() - started;
+
+  for (const [count, result] of results) {
+    assert.equal(result.living, count);
+    assert.ok(result.minimum >= 13, `${count}-duck minimum spacing was ${result.minimum}`);
+  }
+  assert.ok(results.get(10).extent > results.get(3).extent * 2.5);
+  assert.ok(results.get(24).extent > results.get(10).extent);
+  assert.ok(elapsed < 1000, `full flock stress test took ${elapsed.toFixed(1)}ms`);
 });
 
 test('one living duck earns the base passive score per second', () => {

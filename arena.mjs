@@ -17,7 +17,9 @@ export const SCROLL_SPEED = 44;
 export const STAGE_DISTANCE = 70;
 export const STAGE_REINFORCEMENTS = 2;
 export const PASSIVE_SCORE_PER_DUCK = 10;
-export const DUCK_SOFT_SPACING = 11;
+// The duck art is 16×16; a 7px radius keeps each duck readable while allowing a 2px soft overlap.
+export const DUCK_COLLISION_RADIUS = 7;
+export const DUCK_SOFT_SPACING = DUCK_WIDTH + 2;
 export const ACTION_COSTS = Object.freeze({
   punch: 18, attackSlam: 40, defenseSlam: 30, grab: 24, release: 0,
 });
@@ -62,6 +64,10 @@ const REGEN_PER_SECOND = 32;
 const DEFENSE_THREAT_RANGE = 36;
 const DEFENSE_CLEARANCE = 6;
 const MAX_SEPARATION_SPEED = 28;
+const DUCK_MIN_CENTER_DISTANCE = DUCK_COLLISION_RADIUS * 2;
+const OVERLAP_RESOLUTION_ITERATIONS = 8;
+const MAX_PAIR_CORRECTION = 1.5;
+const MAX_DUCK_CORRECTION_PER_ITERATION = 1.25;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -604,6 +610,66 @@ export function applyDuckSeparation(state, dt) {
   }
 }
 
+export function resolveDuckOverlaps(state, iterations = OVERLAP_RESOLUTION_ITERATIONS) {
+  const living = state.ducks.filter((duck) => duck.alive);
+  if (living.length < 2) return;
+  const held = new Set(state.heldDuckIds);
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const offsets = new Map(living.map((duck) => [duck.id, { x: 0, y: 0 }]));
+    let foundOverlap = false;
+
+    for (let firstIndex = 0; firstIndex < living.length - 1; firstIndex += 1) {
+      const first = living[firstIndex];
+      for (let secondIndex = firstIndex + 1; secondIndex < living.length; secondIndex += 1) {
+        const second = living[secondIndex];
+        const firstHeld = held.has(first.id);
+        const secondHeld = held.has(second.id);
+        if (firstHeld && secondHeld) continue;
+
+        let dx = second.x - first.x;
+        let dy = second.y - first.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance >= DUCK_MIN_CENTER_DISTANCE) continue;
+        foundOverlap = true;
+        if (distance < 1e-6) {
+          const angle = ((first.id * 37 + second.id * 17) % 16) / 16 * Math.PI * 2;
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+
+        const correction = Math.min(MAX_PAIR_CORRECTION, (DUCK_MIN_CENTER_DISTANCE - distance) * 0.7);
+        const directionX = dx / distance;
+        const directionY = dy / distance;
+        if (!firstHeld) {
+          const share = secondHeld ? correction : correction / 2;
+          offsets.get(first.id).x -= directionX * share;
+          offsets.get(first.id).y -= directionY * share;
+        }
+        if (!secondHeld) {
+          const share = firstHeld ? correction : correction / 2;
+          offsets.get(second.id).x += directionX * share;
+          offsets.get(second.id).y += directionY * share;
+        }
+      }
+    }
+
+    if (!foundOverlap) break;
+    for (const duck of living) {
+      if (held.has(duck.id)) continue;
+      const offset = offsets.get(duck.id);
+      const magnitude = Math.hypot(offset.x, offset.y);
+      const scale = magnitude > MAX_DUCK_CORRECTION_PER_ITERATION
+        ? MAX_DUCK_CORRECTION_PER_ITERATION / magnitude
+        : 1;
+      const minimumX = Math.min(duck.x, DUCK_WIDTH / 2);
+      duck.x = clamp(duck.x + offset.x * scale, minimumX, WIDTH - DUCK_WIDTH / 2);
+      duck.y = clamp(duck.y + offset.y * scale, DUCK_HEIGHT / 2, HEIGHT - DUCK_HEIGHT / 2);
+    }
+  }
+}
+
 function overlapsBarrier(duck, barrier) {
   const halfWidth = DUCK_WIDTH / 2;
   const halfHeight = DUCK_HEIGHT / 2;
@@ -730,6 +796,9 @@ function advanceArena(state, dt) {
     } else if (duck.x + DUCK_WIDTH / 2 <= 0 || duck.burnDamage >= BURN_LIMIT) loseDuck(state, duck);
     if (state.gameOver) break;
   }
+
+  // Steering can pull several ducks toward one point, so enforce the visible collision after all movement.
+  resolveDuckOverlaps(state);
 
   state.obstacles = state.obstacles.filter((log) => log.x + log.width > 0);
   if (state.zone === 'practice') {
