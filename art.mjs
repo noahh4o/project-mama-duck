@@ -161,14 +161,12 @@ function loadImage(src) {
 
 
 export async function createRenderer(context) {
-  const duck = pixelSprite(duckPixels, {
-    n: '#334d65', t: '#8bc2c4', s: '#709caf', k: '#102e3d', o: '#f49a58',
-  });
-  const [hand, handHit, handSleep, handGrab] = await Promise.all([
+  const [hand, handHit, handSleep, handGrab, duck] = await Promise.all([
     loadImage('./assets/handOpen.png'),
     loadImage('./assets/handHit.png'),
     loadImage('./assets/handSleep.png'),
-    loadImage('./assets/handGrab.png')
+    loadImage('./assets/handGrab.png'),
+    loadImage('./assets/duckling.png')
   ]);
   const enemySprites = Object.fromEntries(
     Object.entries(enemyArt).map(([type, { rows, colors }]) => [type, pixelSprite(rows, colors)]),
@@ -218,6 +216,8 @@ export async function createRenderer(context) {
       handImg = handSleep;
     } else if (state.heldDuckIds.length > 0) {
       handImg = handGrab;
+    } else if (state.actionEffect) {
+      handImg = handHit;
     }
     if (handImg != null) {
       context.drawImage(
@@ -511,6 +511,7 @@ function drawFire(context, obstacle, scroll, flames) {
   const x = Math.round(obstacle.x);
   const { y, width, height } = obstacle;
   const bottom = y + height;
+  
   const frame = Math.floor(scroll / 6) % flames.length;
   rect(context, '#684651', x, bottom - 5, width, 4);
   rect(context, '#a25b50', x + 3, bottom - 7, width - 6, 3);
@@ -518,7 +519,7 @@ function drawFire(context, obstacle, scroll, flames) {
     const variation = (offset * 3 + Math.floor(scroll / 8)) % 9;
     const size = height - variation - (offset === 0 ? 9 : 1);
     const tongueWidth = Math.min(width - offset, 14);
-    context.drawImage(flames[(frame + offset) % flames.length], x + offset, bottom - size, tongueWidth, size);
+    context.drawImage(flames[(frame + offset) % flames.length], x + offset, bottom - size, size, size);
   }
 }
 
