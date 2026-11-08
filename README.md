@@ -1,41 +1,56 @@
-# Motherduck
+# Mama Duck — Endless Arcade
 
-A dependency-free browser arena for the HackComs game.
+A webcam-controlled pixel-art arcade game about protecting a growing flock of blue ducks. Begin with three, recruit more, unlock two independent flocks at six, and survive until the entire flock is lost. Scores and run records stay in the browser.
 
 ## Run locally
 
-Install Node.js 24. If you use nvm, run `nvm install` and `nvm use` from this directory.
+Use Node.js 24 (see .nvmrc). No application packages are required.
 
-```sh
-npm ci
-npm run dev
-```
+    npm ci
+    npm test
+    DEV_PORT=8002 npm run dev
 
-Open [the arena](http://127.0.0.1:8000/), pick **Forest** or **River**, then start or skip the tutorial. Use the pointer or arrow keys to nudge ducks away from enemies. Select **Zones** to return to the picker.
+Open http://127.0.0.1:8002/. The title offers mouse play, webcam play, a virtual player and illustrated controls. Without DEV_PORT the server defaults to port 8000; .env can override it. Keep local environment settings out of Git.
 
-For camera input, select **Webcam** on the title screen and allow camera access. Move one hand to aim the original cursor. Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for defense slam. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe.
+Camera mode requires permission and internet access for the pinned MediaPipe runtime, WASM and model. Camera frames are processed locally and are not uploaded or recorded. Mouse mode and synthetic playtesting do not require a webcam.
 
-The defaults work on a fresh clone. To change the server host or port, copy `.env.example` to `.env` and edit it. Use `cp .env.example .env` on macOS or Linux, or `Copy-Item .env.example .env` in PowerShell. Put shared defaults in `.env.example` and keep personal settings in the ignored `.env`.
+## Controls
 
-The dev server serves the browser files listed in `scripts/dev.mjs`. Add any new browser modules to that list when introducing them.
+| Gesture | Action |
+| --- | --- |
+| Open palm | FOLLOW: gather and guide the owned flock |
+| Closed fist | REPEL: disperse ducks to break lightning links |
+| Thumb–index pinch | GRAB: carry one duck, prioritizing a marked hawk target |
+| Two fists held close together | SPLIT: open a temporary wolf corridor |
+| Devil horns | ATTACK: interrupt a nearby predator; release to rearm |
 
-Every 70 m, the run picks a new Forest or River stage and adds two ducks. Surviving ducks, burn damage, distance, and losses carry across stages. The tenth loss ends the run.
+At six ducks, an in-game tutorial introduces flock A (left hand, gold accent) and flock B (right hand, pink accent). Stable hand IDs retain ownership across normal movement. Missing-hand grace and parking help tracking recover. Keep fists apart for independent REPEL.
+
+Mouse: move to FOLLOW, hold right button to REPEL, hold Space to GRAB, X/click to ATTACK, G to SPLIT, Q/E to select flock A/B. Escape pauses. The unselected flock follows its last mouse marker.
+
+## Gameplay and verification
+
+Chain lightning penalizes proximity rather than a particular input. Wolves commit to crossing pack-breaker paths; foxes use a straight lane; hawks mark one duck; raccoons attempt theft. Recruitment is active, the cap is 24 ducks, and difficulty keeps scaling with bounded reaction windows. There is no fixed victory timer.
+
+    npm test
+    node scripts/arcade-qa.mjs
+
+The QA script compares FOLLOW-only, mixed-gesture and two-hand strategies across three seeds for up to five minutes. Surviving runs are explicitly marked censored. Automated and browser simulations do not establish physical gesture accuracy or subjective enjoyment.
+
+## Code map
+
+- endless-app.mjs: current browser entry, menus, camera and mouse input, audio, records.
+- endless.mjs: seeded endless simulation, recruitment, ownership and difficulty director.
+- homeward-art.mjs / controls-art.mjs: original pixel sprites, telegraphs and illustrated controls.
+- hands/: MediaPipe lifecycle, tracking, geometric gestures and input adapter.
+- arcade-record.mjs: browser-local run records.
+- debug/hands-debug.html and debug/control-lab.html: standalone diagnostics.
+- ENDLESS.md: current mechanics, architecture and QA details.
+
+The team's classic arena is available at `/classic.html`, with its Forest/River tutorial, pixel UI, audio, and webcam controls. Select **Webcam** on that title screen; a pinch grabs, horns trigger attack slam, and two converging fists trigger defense slam. Pointer, arrow keys, action buttons, and Z/X/C/Space remain available. Select **Use mouse** to stop camera capture. Its code lives in arena.mjs, art.mjs, game.mjs, audio.mjs, and classic-input.mjs. The classic arena changes stages every 70 m, adds two ducks per stage, and ends after ten losses.
+
+The endless arcade remains the default at `/`. Both modes share the existing hand engine. The 90-second Homeward prototype and its regression tests also remain in the repository; HOMEWARD.md records those earlier milestones.
 
 ## Team workflow
 
-Run `npm test` before opening a pull request. GitHub Actions runs `npm ci` and `npm test` on pull requests to `main` and pushes to `main`. Start each change from the latest `main`, work on a short-lived branch, and merge after review and a passing CI run.
-
-For the first publish, create an empty GitHub repository for the team and replace `OWNER/REPO` with its path.
-
-```sh
-git remote add origin https://github.com/OWNER/REPO.git
-git push -u origin main
-```
-
-## Controls and code
-
-Use the in-game action buttons or press **Z** to punch, **X** for attack slam, **C** for defense slam, and **Space** to grab or release. Held ducks are protected until release or timeout. Emptying the stamina bar starts a cooldown. In the River, keep ducks clear of the dashed area around alligator jaws. It widens when more ducks are exposed.
-
-A meteor transforms Forest into Burned Forest during the run. Fallen logs push ducks backward. Ducks can cross ground fires, but burn damage builds on contact and lingers after they leave. Use defense slam to extinguish nearby ducks. Lightning can appear in any playable zone.
-
-The simulation lives in `arena.mjs`, the Canvas renderer in `art.mjs`, and the browser controls and HUD in `game.mjs`. The arena takes logical hand coordinates through `setHandPosition`.
+Use a feature branch and open a pull request to main. Run npm test and git diff --check before publishing. GitHub Actions runs the repository tests on pull requests. Do not commit .env files, camera captures, credentials, local Node installations or generated test output.

@@ -20,6 +20,12 @@ const SWOOP_SECONDS = 1.15;
 const HIT_PAUSE = 1.15;
 const RIVER_JAW_LANES = [105, 69, 133];
 
+export function createAttackScheduler(options = {}) {
+  const telegraphMs = options.telegraphMs ?? 1800, executeMs = options.executeMs ?? 500, recoverMs = options.recoverMs ?? 800, spacingMs = options.spacingMs ?? 800;
+  let active = null, lastResolved = -Infinity;
+  return { get state() { return active ? { ...active } : null; }, request(enemy, now, lane, timing = {}) { if (active || now - lastResolved < spacingMs) return false; active = { enemyId: enemy.id, type: enemy.type, phase: 'TELEGRAPH', startedAt: now, lane, origin: { x: enemy.x, y: enemy.y }, direction: { x: -1, y: 0 }, timing: { telegraphMs, executeMs, recoverMs, ...timing } }; return true; }, update(now) { if (!active) return null; const elapsed = now - active.startedAt; if (active.phase === 'TELEGRAPH' && elapsed >= active.timing.telegraphMs) { active.phase = 'EXECUTE'; active.executeAt = now; } else if (active.phase === 'EXECUTE' && now - active.executeAt >= active.timing.executeMs) { active.phase = 'RECOVER'; active.recoverAt = now; } else if (active.phase === 'RECOVER' && now - active.recoverAt >= active.timing.recoverMs) { active.phase = 'COMPLETE'; lastResolved = now; } return { ...active }; }, clear(enemyId) { if (!active || active.enemyId === enemyId) active = null; } };
+}
+
 export function countExposedDucks(ducks) {
   return ducks.reduce((count, duck) => count + Number(duck.alive && !duck.protected), 0);
 }
@@ -141,15 +147,34 @@ function touchDuck(enemy, duck, jaw, duckWidth, duckHeight) {
 }
 
 export function advanceEnemies(state, { dt, scroll, time, duckWidth, duckHeight, width }, hitDuck) {
+  if (!state.majorAttackScheduler) Object.defineProperty(state, 'majorAttackScheduler', { value: createAttackScheduler(), writable: true, configurable: true, enumerable: false });
   spawnEncounter(state, time);
   const exposedCount = countExposedDucks(state.ducks);
+  const scheduledPhase = state.majorAttackScheduler.update(time * 1000);
 
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
 
-    moveEnemy(enemy, state.ducks, dt, scroll);
+    if ((enemy.type === 'fox' || enemy.type === 'wolf') && !enemy.majorAttack && enemy.x < 80) {
+      const target = nearestExposedDuck(state.ducks, enemy);
+      if (target && state.majorAttackScheduler.request(enemy, time * 1000, target.y)) {
+        enemy.majorAttack = { origin: { x: enemy.x, y: enemy.y }, destination: { x: -40, y: target.y }, laneY: target.y };
+      }
+    }
+    const scheduled = state.majorAttackScheduler.state;
+    if (enemy.majorAttack && scheduled?.enemyId === enemy.id) {
+      enemy.attackPhase = scheduledPhase?.phase ?? enemy.attackPhase;
+      if (enemy.attackPhase === 'EXECUTE') {
+        const progress = Math.min(1, (time * 1000 - scheduledPhase.executeAt) / 500);
+        enemy.x = enemy.majorAttack.origin.x + (enemy.majorAttack.destination.x - enemy.majorAttack.origin.x) * progress;
+        enemy.y = enemy.majorAttack.laneY;
+      }
+      if (enemy.attackPhase === 'COMPLETE') { state.majorAttackScheduler.clear(enemy.id); enemy.majorAttack = null; enemy.x -= 42 * dt; enemy.attackPhase = 'IDLE'; }
+    }
+
+    if (!enemy.majorAttack || !['TELEGRAPH', 'EXECUTE', 'RECOVER'].includes(enemy.attackPhase)) moveEnemy(enemy, state.ducks, dt, scroll);
     enemy.hitPause = Math.max(0, enemy.hitPause - dt);
-    if (enemy.hitPause > 0 || (enemy.type === 'blueJay' && enemy.phase !== 'swoop')) continue;
+    if (enemy.hitPause > 0 || (enemy.type === 'blueJay' && enemy.phase !== 'swoop') || ((enemy.type === 'fox' || enemy.type === 'wolf') && enemy.attackPhase !== 'EXECUTE')) continue;
 
     const jaw = enemy.type === 'alligator' ? alligatorJaw(enemy, exposedCount) : null;
     for (const duck of state.ducks) {
