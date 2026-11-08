@@ -13,6 +13,8 @@ npm run dev
 
 Open [the arena](http://127.0.0.1:8000/), pick **Forest** or **River**, then start or skip the tutorial. Use the pointer or arrow keys to nudge ducks away from enemies. Select **Zones** to return to the picker.
 
+For camera input, select **Webcam** on the title screen and allow camera access. Move one hand to aim the original cursor. Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for defense slam. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe.
+
 The defaults work on a fresh clone. To change the server host or port, copy `.env.example` to `.env` and edit it. Use `cp .env.example .env` on macOS or Linux, or `Copy-Item .env.example .env` in PowerShell. Put shared defaults in `.env.example` and keep personal settings in the ignored `.env`.
 
 The dev server serves the browser files listed in `scripts/dev.mjs`. Add any new browser modules to that list when introducing them.
