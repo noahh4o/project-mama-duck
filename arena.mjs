@@ -4,8 +4,9 @@ import { advanceArenaEvents, createEventSchedule } from './events.mjs';
 export { alligatorJaw, ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, countExposedDucks } from './enemies.mjs';
 export const WIDTH = 320;
 export const HEIGHT = 180;
-export const HAND_WIDTH = 26;
-export const HAND_HEIGHT = 28;
+export const HAND_WIDTH = 19;
+export const HAND_HEIGHT = 16;
+export const HAND_SCALE = 2;
 export const DUCK_WIDTH = 16;
 export const DUCK_HEIGHT = 16;
 export const DEATH_LIMIT = 10;
@@ -125,7 +126,7 @@ function advanceStage(state) {
 
 export function createArena(zone = 'practice', { seed, progression = false, tutorial = false } = {}) {
   const live = zone === 'forest' || zone === 'river';
-  const hand = { x: 124, y: HEIGHT / 2 };
+  const hand = { x: 124, y: HEIGHT / 2 }; // starting pos of hand
   const ducks = Array.from({ length: FLOCK_SIZE }, (_, id) => createDuck(id, id, FLOCK_SIZE));
   const progressionSeed = progression && live ? (seed ?? Math.floor(Math.random() * 0x100000000)) >>> 0 : null;
   const state = {
@@ -150,9 +151,10 @@ export function createArena(zone = 'practice', { seed, progression = false, tuto
 
 export function setHandPosition(state, x, y) {
   if (state.gameOver || !Number.isFinite(x) || !Number.isFinite(y)) return;
-
-  state.handTarget.x = clamp(x, HAND_WIDTH / 2, WIDTH - HAND_WIDTH / 2);
-  state.handTarget.y = clamp(y, HAND_HEIGHT / 2, HEIGHT - HAND_HEIGHT / 2);
+  var halfWidth =  HAND_WIDTH / 2 * HAND_SCALE;
+  var halfHeight = HAND_HEIGHT / 2 * HAND_SCALE;
+  state.handTarget.x = clamp(x, halfWidth, WIDTH - halfWidth);
+  state.handTarget.y = clamp(y, halfHeight, HEIGHT - halfHeight);
 }
 
 function loseDuck(state, duck) {
