@@ -5,13 +5,13 @@ const NUDGE_DISTANCE = 12;
 const LESSONS = [
   {
     title: 'Nudge a duck',
-    prompt: 'Move the hand with your pointer or arrow keys. Push the duck with the hand.',
+    prompt: 'Move the hand with your pointer or arrow keys towards the duck to push the duck.',
     action: null,
     duck: { x: 160, y: 99 },
   },
   {
     title: 'Punch',
-    prompt: 'Move close to the target, then press Z or tap Punch.',
+    prompt: 'Move hand close to the target, then press Z or tap Punch.',
     action: 'punch',
     targets: [{ x: 188, y: 96 }],
   },
