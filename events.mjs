@@ -8,16 +8,27 @@ function randomBetween(schedule, min, max) {
   return min + schedule.seed / 0x100000000 * (max - min);
 }
 
-export function createEventSchedule(zone, seed = Math.floor(Math.random() * 0x100000000)) {
+export function createEventSchedule(
+  zone,
+  stage,
+  seed = Math.floor(Math.random() * 0x100000000),
+) {
   const schedule = { seed };
   const meteorAt = randomBetween(schedule, 2.5, 4.5);
-  schedule.meteorAt = zone === 'forest' ? meteorAt : null;
-  schedule.lightningAt = randomBetween(schedule, 1.4, 3.3);
+  const lightningAt = randomBetween(schedule, 1.4, 3.3);
+
+  schedule.meteorAt = stage >= 5 && zone === 'forest' ? meteorAt : null;
+  schedule.lightningAt = stage >= 3 ? lightningAt : null;
   return schedule;
 }
 
 function updateLightning(state, time, width, height) {
+
   const schedule = state.eventSchedule;
+  if (schedule.lightningAt === null) {
+    state.lightning = null;
+    return;
+  }
   const elapsed = time - schedule.lightningAt;
   if (elapsed < 0) return;
 
