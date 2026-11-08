@@ -34,6 +34,7 @@ staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
 const staminaFill = document.querySelector('#stamina-fill');
 const handStatus = document.querySelector('#hand-status');
 const render = createRenderer(canvas.getContext('2d'));
+//const render = await createRenderer(canvas.getContext('2d'));
 const shortcuts = new Map([['z', 'punch'], ['x', 'attackSlam'], ['c', 'defenseSlam'], [' ', 'grab']]);
 const directions = new Map([
   ['ArrowLeft', [-1, 0]],

@@ -150,7 +150,29 @@ function pixelSprite(rows, palette) {
   });
   return sprite;
 }
+// function loadImage(src) {
+//   return new Promise((resolve, reject) => {
+//     const image = new Image();
+//     image.onload = () => resolve(image);
+//     image.onerror = () => reject(new Error(`Could not load ${src}`));
+//     image.src = src;
+//   });
+// }
 
+// export async function createRenderer(context) {
+//   const [duck, hand, tiredHand, fox] = await Promise.all([
+//     loadImage('./assets/duck.png'),
+//     loadImage('./assets/hand.png'),
+//     loadImage('./assets/hand-tired.png'),
+//     loadImage('./assets/fox.png'),
+//   ]);
+
+//   context.imageSmoothingEnabled = false;
+
+//   return (state, tutorialTarget) => {
+//     // Existing drawing code, using the loaded images with drawImage()
+//   };
+// }
 export function createRenderer(context) {
   const duck = pixelSprite(duckPixels, {
     n: '#334d65', t: '#8bc2c4', s: '#709caf', k: '#102e3d', o: '#f49a58',
