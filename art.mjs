@@ -150,39 +150,22 @@ function pixelSprite(rows, palette) {
   });
   return sprite;
 }
-// function loadImage(src) {
-//   return new Promise((resolve, reject) => {
-//     const image = new Image();
-//     image.onload = () => resolve(image);
-//     image.onerror = () => reject(new Error(`Could not load ${src}`));
-//     image.src = src;
-//   });
-// }
+function loadImage(src) {
+  const image = new Image();
+  image.src = src;
+}
 
-// export async function createRenderer(context) {
-//   const [duck, hand, tiredHand, fox] = await Promise.all([
-//     loadImage('./assets/duck.png'),
-//     loadImage('./assets/hand.png'),
-//     loadImage('./assets/hand-tired.png'),
-//     loadImage('./assets/fox.png'),
-//   ]);
 
-//   context.imageSmoothingEnabled = false;
-
-//   return (state, tutorialTarget) => {
-//     // Existing drawing code, using the loaded images with drawImage()
-//   };
-// }
 export function createRenderer(context) {
   const duck = pixelSprite(duckPixels, {
     n: '#334d65', t: '#8bc2c4', s: '#709caf', k: '#102e3d', o: '#f49a58',
   });
-  const hand = pixelSprite(handPixels, {
-    n: '#334d65', p: '#f4dfb2', s: '#d39b74',
-  });
-  const tiredHand = pixelSprite(handPixels, {
-    n: '#334d65', p: '#afbdba', s: '#738d91',
-  });
+  const [hand, handHit, handSleep, handGrab] = [
+    loadImage('./assets/handOpen.png'),
+    loadImage('./assets/handHit.png'),
+    loadImage('./assets/handSleep.png'),
+    loadImage('./assets/handGrab.png')
+  ]
   const enemySprites = Object.fromEntries(
     Object.entries(enemyArt).map(([type, { rows, colors }]) => [type, pixelSprite(rows, colors)]),
   );
@@ -226,12 +209,20 @@ export function createRenderer(context) {
       drawDuckBurn(context, duckling, state.scroll, flames);
     }
     if (state.actionEffect) drawActionEffect(context, state.actionEffect);
-    context.drawImage(
-      state.cooldown > 0 ? tiredHand : hand,
-      Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
-      Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
-      HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
-    );
+    const handImg = hand;
+    // if (state.cooldown > 0) {
+    //   handImg = handSleep;
+    // } else if (false) {
+    //   handImg = handGrab;
+    // }
+    if (handImg != null) {
+      context.drawImage(
+        handImg,
+        Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
+        Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
+        HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
+      );
+    }
     for (const duckling of heldDucks) {
       const x = Math.round(duckling.x - DUCK_WIDTH / 2);
       const y = Math.round(duckling.y - DUCK_HEIGHT / 2);
