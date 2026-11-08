@@ -45,7 +45,7 @@ const BURNED_ROUTES = [
 ];
 const BURN_LINGER = 1.25;
 const EXTINGUISH_GRACE = 0.55;
-const ACTION_RADIUS = { punch: 26, attackSlam: 49, defenseSlam: 46, grab: 32, release: 18 };
+const ACTION_RADIUS = { punch: 26, attackSlam: 43, defenseSlam: 40, grab: 32, release: 18 };
 const COOLDOWN_SECONDS = 2;
 const HOLD_SECONDS = 2.5;
 const HELD_X_OFFSETS = [0, -11, 11];
