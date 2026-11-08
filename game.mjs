@@ -1,6 +1,6 @@
 import {
   ACTION_COSTS, canPerformHandAction, createArena, DEATH_LIMIT, HEIGHT, MAX_STAMINA,
-  performHandAction, PIXELS_PER_METER, setHandPosition, STAGE_DISTANCE,
+  performHandAction, PIXELS_PER_METER, setHandPosition, setWebcamHands, STAGE_DISTANCE,
   STAGE_REINFORCEMENTS, stepArena, WIDTH,
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
@@ -52,6 +52,7 @@ const directions = new Map([
 ]);
 const pressed = new Set();
 const grabInputs = new Set();
+const webcamGrabHands = new Map();
 const zoneLabels = { forest: 'Forest', river: 'River', burnedForest: 'Burned Forest', practice: 'Tutorial' };
 
 const selectedZone = () => stagePicker.querySelector('input:checked').value;
@@ -81,14 +82,15 @@ function moveHand(event) {
 canvas.addEventListener('pointermove', moveHand);
 canvas.addEventListener('pointerdown', moveHand);
 
-function triggerAction(action) {
-  if (!running || (tutorial && getTutorialLesson(tutorial).action !== action)) return;
+function triggerAction(action, options = {}) {
+  if (!running || (tutorial && getTutorialLesson(tutorial).action !== action)) return false;
   const previousStamina = arena.stamina;
-  if (!performHandAction(arena, action)) return;
+  if (!performHandAction(arena, action, options)) return false;
   if (arena.stamina < previousStamina) staminaWidget.hidden = false;
   if (tutorial) advanceTutorial(tutorial, action);
   renderArena();
   updateStatus();
+  return true;
 }
 
 function startGrab(source) {
@@ -127,7 +129,14 @@ function stopWebcam(message) {
   webcamMode = 'off';
   webcam.stop();
   cameraInput.reset();
-  endGrab('webcam');
+  for (const handIndex of webcamGrabHands.values()) {
+    if (arena.heldDuckIdsByHand[handIndex]?.length) {
+      performHandAction(arena, 'release', { handIndex });
+    }
+  }
+  webcamGrabHands.clear();
+  setWebcamHands(arena, []);
+  setHandPosition(arena, arena.hand.x, arena.hand.y);
   updateWebcamControls(message);
 }
 
@@ -167,12 +176,23 @@ webcam.on('stateChange', (state) => {
   }
   if (!running || arena.gameOver || controlsGuide.open || state.status !== 'running') return;
 
-  const { hand, changed, actions } = cameraInput.update(state);
-  if (changed || hand?.gesture !== 'GRAB') endGrab('webcam');
-  if (!hand) return;
-  setHandPosition(arena, hand.target.x, hand.target.y);
-  if (hand.gesture === 'GRAB') startGrab('webcam');
-  for (const action of actions) triggerAction(action);
+  const { hands, actionEvents } = cameraInput.update(state);
+  setWebcamHands(arena, hands.map(({ slot, target }) => ({ handIndex: slot, target })));
+  const pinchingIds = new Set(hands.filter(hand => hand.gesture === 'GRAB').map(hand => hand.handId));
+  for (const [handId, handIndex] of webcamGrabHands) {
+    if (pinchingIds.has(handId)) continue;
+    if (arena.heldDuckIdsByHand[handIndex]?.length) triggerAction('release', { handIndex });
+    webcamGrabHands.delete(handId);
+  }
+  for (const hand of hands) {
+    if (hand.gesture === 'GRAB' && !webcamGrabHands.has(hand.handId)
+      && triggerAction('grab', { handIndex: hand.slot })) {
+      webcamGrabHands.set(hand.handId, hand.slot);
+    }
+  }
+  for (const action of actionEvents) {
+    triggerAction(action.action, { handIndex: action.handIndex, position: action.position });
+  }
 });
 
 for (const button of actionButtons) {
@@ -237,6 +257,7 @@ function loadArena(nextArena) {
   lastFrame = null;
   pressed.clear();
   grabInputs.clear();
+  webcamGrabHands.clear();
   cameraInput.reset();
   endScreen.hidden = true;
   renderArena();

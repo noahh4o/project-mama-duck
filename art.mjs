@@ -211,22 +211,37 @@ export async function createRenderer(context) {
       context.drawImage(duck, Math.round(x - DUCK_WIDTH / 2), Math.round(y - DUCK_HEIGHT / 2));
       drawDuckBurn(context, duckling, state.scroll, flames);
     }
-    if (state.actionEffect) drawActionEffect(context, state.actionEffect);
-    let handImg = hand;
-    if (state.cooldown > 0) {
-      handImg = handSleep;
-    } else if (state.heldDuckIds.length > 0) {
-      handImg = handGrab;
-    } else if (state.actionEffect) {
-      handImg = handHit;
-    }
-    if (handImg != null) {
+    const actionEffects = state.actionEffects?.length
+      ? state.actionEffects
+      : state.actionEffect ? [state.actionEffect] : [];
+    for (const effect of actionEffects) drawActionEffect(context, effect);
+    const handCount = state.hands?.length ?? 1;
+    for (let handIndex = 0; handIndex < handCount; handIndex += 1) {
+      if (state.activeHands && !state.activeHands[handIndex]) continue;
+      const position = state.hands?.[handIndex] ?? state.hand;
+      const heldIds = state.heldDuckIdsByHand?.[handIndex] ?? (handIndex === 0 ? state.heldDuckIds : []);
+      const actionEffect = actionEffects.find((effect) => effect.handIndex === handIndex);
+      let handImg = hand;
+      if (state.cooldown > 0) {
+        handImg = handSleep;
+      } else if (heldIds.length > 0) {
+        handImg = handGrab;
+      } else if (actionEffect) {
+        handImg = handHit;
+      }
+      const flipX = handIndex === 0 && state.webcamHandsActive;
+
+      context.save();
+      context.translate(position.x, position.y);
+      context.scale(flipX ? -1 : 1, 1);
       context.drawImage(
         handImg,
-        Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
-        Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
-        HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
+        -HAND_WIDTH / 2 * HAND_SCALE,
+        -HAND_HEIGHT / 2 * HAND_SCALE,
+        HAND_WIDTH * HAND_SCALE,
+        HAND_HEIGHT * HAND_SCALE,
       );
+      context.restore();
     }
     for (const duckling of heldDucks) {
       const x = Math.round(duckling.x - DUCK_WIDTH / 2);

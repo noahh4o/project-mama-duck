@@ -19,7 +19,7 @@ export function createGameplayInputAdapter(options = {}) {
         if (seenEvents.has(key)) continue;
         seenEvents.add(key);
         if (seenEvents.size > 128) seenEvents.delete(seenEvents.values().next().value);
-        commands.push({ type: event.type === 'GAP' ? 'gap' : 'attack', handId: event.handId, handIds: event.handIds, timestamp: event.timestamp, eventId: event.sequenceId ?? event.timestamp, source: event.source ?? 'unknown', trackingValid: true });
+        commands.push({ type: event.type === 'GAP' ? 'gap' : 'attack', handId: event.handId, handIds: event.handIds, center: event.center ? mapHandPosition(event.center, viewport) : undefined, timestamp: event.timestamp, eventId: event.sequenceId ?? event.timestamp, source: event.source ?? 'unknown', trackingValid: true });
       }
       return { commands, hands };
     },

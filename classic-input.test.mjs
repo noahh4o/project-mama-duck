@@ -25,8 +25,25 @@ test('horns and two-hand gap events trigger the classic slams once', () => {
   const events = [
     { type: 'ATTACK', handId: 'two', sequenceId: 1 },
     { type: 'ATTACK', handId: 'one', sequenceId: 2 },
-    { type: 'GAP', handIds: ['one', 'two'], timestamp: 3 },
+    { type: 'GAP', handIds: ['one', 'two'], center: { x: 0.5, y: 0.5 }, timestamp: 3 },
   ];
-  assert.deepEqual(input.update({ hands, events }).actions, ['attackSlam', 'defenseSlam']);
+  const first = input.update({ hands, events });
+  assert.deepEqual(first.actions, ['attackSlam', 'attackSlam', 'defenseSlam']);
+  assert.deepEqual(first.actionEvents.map(({ action, handIndex }) => ({ action, handIndex })), [
+    { action: 'attackSlam', handIndex: 1 },
+    { action: 'attackSlam', handIndex: 0 },
+    { action: 'defenseSlam', handIndex: 0 },
+  ]);
+  assert.deepEqual(first.actionEvents[2].position, { x: 160, y: 90 });
   assert.deepEqual(input.update({ hands, events }).actions, []);
+});
+
+test('both tracked hands keep stable gameplay slots when detections reorder', () => {
+  const input = createClassicWebcamInput({ width: 320, height: 180 });
+  const left = { ...tracked('left', 0.25), handedness: 'Left' };
+  const right = { ...tracked('right', 0.75), handedness: 'Right' };
+  const first = input.update({ hands: [left, right] });
+  const reordered = input.update({ hands: [right, left] });
+  assert.deepEqual(first.hands.map(({ handId, slot }) => [handId, slot]), [['left', 0], ['right', 1]]);
+  assert.deepEqual(reordered.hands.map(({ handId, slot }) => [handId, slot]), [['right', 1], ['left', 0]]);
 });

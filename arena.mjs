@@ -126,17 +126,22 @@ function advanceStage(state) {
 export function createArena(zone = 'practice', { seed, progression = false, tutorial = false } = {}) {
   const live = zone === 'forest' || zone === 'river';
   const hand = { x: 124, y: HEIGHT / 2 }; // starting pos of hand
+  const secondHand = { x: WIDTH - 124, y: HEIGHT / 2 };
+  const handTarget = { ...hand };
+  const secondHandTarget = { ...secondHand };
   const ducks = Array.from({ length: FLOCK_SIZE }, (_, id) => createDuck(id, id, FLOCK_SIZE));
   const progressionSeed = progression && live ? (seed ?? Math.floor(Math.random() * 0x100000000)) >>> 0 : null;
   const state = {
-    hand, handTarget: { ...hand }, ducks, deaths: 0, gameOver: false,
+    hand, hands: [hand, secondHand], handTarget, handTargets: [handTarget, secondHandTarget],
+    activeHands: [true, false], ducks, deaths: 0, gameOver: false,
     scroll: 0, obstacles: [], obstacleIndex: 0,
     stamina: MAX_STAMINA, cooldown: 0, regenDelay: 0,
-    heldDuckIds: [], holdTime: 0,
+    heldDuckIds: [], heldDuckIdsByHand: [[], []], holdTime: 0, holdTimes: [0, 0],
     zone: live ? zone : 'practice', tutorial: !live && tutorial,
     stage: 1, stageStartScroll: 0, stageNotice: 0, progressionSeed, nextDuckId: FLOCK_SIZE,
     enemies: [],
     actionEffect: null,
+    actionEffects: [],
     eventSchedule: null, meteor: null, lightning: null,
   };
   if (live) {
@@ -148,12 +153,26 @@ export function createArena(zone = 'practice', { seed, progression = false, tuto
   return state;
 }
 
-export function setHandPosition(state, x, y) {
+export function setHandPosition(state, x, y, handIndex = 0) {
+  state.webcamHandsActive = false;
   if (state.gameOver || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  var halfWidth =  HAND_WIDTH / 2 * HAND_SCALE;
-  var halfHeight = HAND_HEIGHT / 2 * HAND_SCALE;
-  state.handTarget.x = clamp(x, halfWidth, WIDTH - halfWidth);
-  state.handTarget.y = clamp(y, halfHeight, HEIGHT - halfHeight);
+  const halfWidth = HAND_WIDTH / 2 * HAND_SCALE;
+  const halfHeight = HAND_HEIGHT / 2 * HAND_SCALE;
+  const target = state.handTargets[handIndex];
+  if (!target) return;
+  target.x = clamp(x, halfWidth, WIDTH - halfWidth);
+  target.y = clamp(y, halfHeight, HEIGHT - halfHeight);
+  state.activeHands[handIndex] = true;
+}
+
+export function setWebcamHands(state, hands) {
+  if (state.gameOver) return;
+  state.activeHands = [false, false];
+  for (const { handIndex, target } of hands) {
+    if (!Number.isInteger(handIndex) || !target) continue;
+    setHandPosition(state, target.x, target.y, handIndex);
+  }
+  state.webcamHandsActive = true;
 }
 
 function loseDuck(state, duck) {
@@ -174,10 +193,10 @@ function distanceBetween(first, second) {
   return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
-export function canPerformHandAction(state, action) {
-  if (state.gameOver || state.cooldown > 0 || !Object.hasOwn(ACTION_COSTS, action)) return false;
-  if (action === 'release') return state.heldDuckIds.length > 0;
-  if (action === 'grab' && state.heldDuckIds.length > 0) return false;
+export function canPerformHandAction(state, action, handIndex = 0) {
+  if (state.gameOver || state.cooldown > 0 || !state.hands[handIndex] || !Object.hasOwn(ACTION_COSTS, action)) return false;
+  if (action === 'release') return state.heldDuckIdsByHand[handIndex]?.length > 0;
+  if (action === 'grab' && state.heldDuckIdsByHand[handIndex]?.length > 0) return false;
   return state.stamina > 0;
 }
 
@@ -189,32 +208,43 @@ function positionHeldDuck(duck, hand, slot) {
   duck.y = clamp(hand.y + offsetY, halfHeight, HEIGHT - halfHeight);
 }
 
-function grabDucks(state, radius) {
+function syncHeldDuckIds(state) {
+  state.heldDuckIds = state.heldDuckIdsByHand.flat();
+  state.holdTime = state.holdTimes[0];
+}
+
+function grabDucks(state, radius, handIndex) {
+  const hand = state.hands[handIndex];
   const nearby = state.ducks
-    .filter((duck) => duck.alive && !duck.protected && distanceBetween(duck, state.hand) <= radius)
-    .sort((first, second) => distanceBetween(first, state.hand) - distanceBetween(second, state.hand))
+    .filter((duck) => duck.alive && !duck.protected && distanceBetween(duck, hand) <= radius)
+    .sort((first, second) => distanceBetween(first, hand) - distanceBetween(second, hand))
     .slice(0, HELD_X_OFFSETS.length);
   if (nearby.length === 0) return false;
 
-  state.heldDuckIds = nearby.map((duck) => duck.id);
-  state.holdTime = HOLD_SECONDS;
+  state.heldDuckIdsByHand[handIndex] = nearby.map((duck) => duck.id);
+  state.holdTimes[handIndex] = HOLD_SECONDS;
+  syncHeldDuckIds(state);
   nearby.forEach((duck, slot) => {
     duck.protected = true;
-    positionHeldDuck(duck, state.hand, slot);
+    positionHeldDuck(duck, hand, slot);
   });
   return true;
 }
 
-function releaseDucks(state) {
+function releaseDucks(state, handIndex) {
+  const handsToRelease = handIndex == null ? [0, 1] : [handIndex];
   for (const duck of state.ducks) {
-    if (state.heldDuckIds.includes(duck.id)) duck.protected = false;
+    if (handsToRelease.some((index) => state.heldDuckIdsByHand[index]?.includes(duck.id))) duck.protected = false;
   }
-  state.heldDuckIds = [];
-  state.holdTime = 0;
+  for (const index of handsToRelease) {
+    state.heldDuckIdsByHand[index] = [];
+    state.holdTimes[index] = 0;
+  }
+  syncHeldDuckIds(state);
 }
 
-function attackEnemies(state, radius) {
-  const targets = state.enemies.filter((enemy) => enemy.hp > 0 && distanceBetween(enemy, state.hand) <= radius);
+function attackEnemies(state, radius, hand) {
+  const targets = state.enemies.filter((enemy) => enemy.hp > 0 && distanceBetween(enemy, hand) <= radius);
   for (const enemy of targets) enemy.hp = Math.max(0, enemy.hp - 2);
 }
 
@@ -264,20 +294,21 @@ function knockDuckToSafety(state, duck, barriers) {
   }
 }
 
-export function performHandAction(state, action) {
-  if (!canPerformHandAction(state, action)) return false;
+export function performHandAction(state, action, { handIndex = 0, position } = {}) {
+  if (!canPerformHandAction(state, action, handIndex)) return false;
 
+  const hand = position ?? state.hands[handIndex];
   const radius = ACTION_RADIUS[action];
-  if (action === 'grab' && !grabDucks(state, radius)) return false;
-  if (action === 'release') releaseDucks(state);
-  if (action === 'attackSlam') attackEnemies(state, radius);
+  if (action === 'grab' && !grabDucks(state, radius, handIndex)) return false;
+  if (action === 'release') releaseDucks(state, handIndex);
+  if (action === 'attackSlam') attackEnemies(state, radius, hand);
   if (action === 'defenseSlam') {
     const exposedCount = countExposedDucks(state.ducks);
     const barriers = state.obstacles.concat(state.enemies
       .filter((enemy) => enemy.type === 'alligator' && enemy.hp > 0 && enemy.hitPause === 0)
       .map((enemy) => alligatorJaw(enemy, exposedCount)));
     for (const duck of state.ducks) {
-      if (!duck.alive || distanceBetween(duck, state.hand) > radius) continue;
+      if (!duck.alive || distanceBetween(duck, hand) > radius) continue;
       if (duck.burnTime > 0) {
         duck.burnTime = 0;
         duck.fireGrace = EXTINGUISH_GRACE;
@@ -296,20 +327,24 @@ export function performHandAction(state, action) {
     releaseDucks(state);
     }
   }
-  state.actionEffect = { action, ...state.hand, remaining: 0.28, radius };
+  state.actionEffect = { action, ...hand, handIndex, remaining: 0.28, radius };
+  state.actionEffects = [...state.actionEffects.filter((effect) => effect.handIndex !== handIndex), state.actionEffect];
   return true;
 }
 
 function tickHandActions(state, dt) {
-  if (state.actionEffect) {
-    state.actionEffect.remaining -= dt;
-    if (state.actionEffect.remaining <= 0) state.actionEffect = null;
-  }
+  state.actionEffects = state.actionEffects.filter((effect) => {
+    effect.remaining -= dt;
+    return effect.remaining > 0;
+  });
+  state.actionEffect = state.actionEffects.at(-1) ?? null;
 
-  if (state.holdTime > 0) {
-    state.holdTime = Math.max(0, state.holdTime - dt);
-    if (state.holdTime < 1e-9) releaseDucks(state);
+  for (let handIndex = 0; handIndex < state.holdTimes.length; handIndex += 1) {
+    if (state.holdTimes[handIndex] <= 0) continue;
+    state.holdTimes[handIndex] = Math.max(0, state.holdTimes[handIndex] - dt);
+    if (state.holdTimes[handIndex] < 1e-9) releaseDucks(state, handIndex);
   }
+  syncHeldDuckIds(state);
 
   if (state.cooldown > 0) {
     state.cooldown = Math.max(0, state.cooldown - dt);
@@ -325,7 +360,7 @@ function tickHandActions(state, dt) {
   }
 }
 
-function advanceHand({ hand, handTarget }, dt) {
+function advanceHand(hand, handTarget, dt) {
   const dx = handTarget.x - hand.x;
   const dy = handTarget.y - hand.y;
   const fraction = Math.min(1, HAND_SPEED * dt / Math.hypot(dx, dy));
@@ -373,15 +408,18 @@ function advanceArena(state, dt) {
   const time = previousTime + dt;
 
   state.stageNotice = Math.max(0, state.stageNotice - dt);
-  advanceHand(state, dt);
+  state.hands.forEach((hand, handIndex) => {
+    if (state.activeHands[handIndex]) advanceHand(hand, state.handTargets[handIndex], dt);
+  });
   tickHandActions(state, dt);
   for (const log of state.obstacles) log.x -= scroll;
 
   for (const duck of state.ducks) {
     if (!duck.alive) continue;
-    const heldSlot = state.heldDuckIds.indexOf(duck.id);
+    const owner = state.heldDuckIdsByHand.findIndex((ids) => ids.includes(duck.id));
+    const heldSlot = owner < 0 ? -1 : state.heldDuckIdsByHand[owner].indexOf(duck.id);
     if (heldSlot !== -1) {
-      positionHeldDuck(duck, state.hand, heldSlot);
+      positionHeldDuck(duck, state.hands[owner], heldSlot);
       continue;
     }
 
@@ -391,7 +429,11 @@ function advanceArena(state, dt) {
     duck.x += clamp(duck.cruiseX + Math.sin(time + phase) * 6 - duck.x, -cruiseSpeed, cruiseSpeed);
     duck.y += (Math.sin(time * 1.6 + phase) - Math.sin(previousTime * 1.6 + phase)) * 4;
 
-    if (state.cooldown === 0 && state.heldDuckIds.length === 0) nudgeDuck(duck, state.hand);
+    if (state.cooldown === 0 && state.heldDuckIds.length === 0) {
+      for (let handIndex = 0; handIndex < state.hands.length; handIndex += 1) {
+        if (state.activeHands[handIndex]) nudgeDuck(duck, state.hands[handIndex]);
+      }
+    }
     duck.x = Math.min(WIDTH - DUCK_WIDTH / 2, duck.x);
     duck.y = clamp(duck.y, DUCK_HEIGHT / 2, HEIGHT - DUCK_HEIGHT / 2);
 
