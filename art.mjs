@@ -218,6 +218,8 @@ export async function createRenderer(context) {
       handImg = handSleep;
     } else if (state.heldDuckIds.length > 0) {
       handImg = handGrab;
+    } else if (state.actionEffect) {
+      handImg = handHit;
     }
     if (handImg != null) {
       context.drawImage(
