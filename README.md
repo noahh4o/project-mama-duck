@@ -1,6 +1,6 @@
 # Motherduck
 
-A dependency-free browser arena for the HackComs game.
+A dependency-free browser arena for the Hack.COMS .
 
 ## Run locally
 

@@ -169,7 +169,7 @@ h1, h2 { margin: 0; line-height: 1; }
 h1 {
   color: #d4f0df;
   font-size: clamp(30px, 7cqw, 78px);
-  font-weight: 700;
+  font-weight: 400;
   text-shadow: 0 2px 0 var(--frame), 3px 5px 0 var(--ink);
   text-transform: uppercase;
 }
