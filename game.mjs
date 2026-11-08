@@ -4,6 +4,7 @@ import {
   STAGE_REINFORCEMENTS, stepArena, WIDTH,
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
+import { createGameAudio } from './audio.mjs';
 import { advanceTutorial, createTutorial, getTutorialLesson, TUTORIAL_LESSON_COUNT } from './tutorial.mjs';
 import { createHandsController } from './hands/hands.mjs';
 import { createClassicWebcamInput } from './classic-input.mjs';
@@ -30,9 +31,10 @@ const lessonTitle = document.querySelector('#lesson-title');
 const lessonPrompt = document.querySelector('#lesson-prompt');
 const enterArena = document.querySelector('#enter-arena');
 const webcamToggle = document.querySelector('#toggle-webcam');
-const stopWebcamButton = document.querySelector('#stop-webcam');
-const tutorialStopWebcam = document.querySelector('#tutorial-stop-webcam');
+const stopWebcamButtons = document.querySelectorAll('#stop-webcam, #tutorial-stop-webcam, #end-stop-webcam');
 const webcamStatus = document.querySelector('#webcam-status');
+const controlsGuide = document.querySelector('#controls-guide');
+const soundToggle = document.querySelector('#sound-toggle');
 const actionBar = document.querySelector('#hand-actions');
 const actionButtons = [...actionBar.querySelectorAll('button')];
 const staminaMeter = document.querySelector('#stamina-meter');
@@ -40,6 +42,7 @@ const staminaWidget = document.querySelector('#stamina-widget');
 staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
 const handStatus = document.querySelector('#hand-status');
 const render = await createRenderer(canvas.getContext('2d'));
+const sound = createGameAudio();
 const shortcuts = new Map([['z', 'punch'], ['x', 'attackSlam'], ['c', 'defenseSlam'], [' ', 'grab']]);
 const directions = new Map([
   ['ArrowLeft', [-1, 0]],
@@ -111,8 +114,7 @@ function updateWebcamControls(message = '') {
   const starting = webcamMode === 'starting';
   webcamToggle.textContent = active ? 'Turn webcam off' : starting ? 'Cancel webcam' : 'Webcam';
   webcamToggle.setAttribute('aria-pressed', String(active));
-  stopWebcamButton.hidden = !active;
-  tutorialStopWebcam.hidden = !active;
+  for (const button of stopWebcamButtons) button.hidden = !active;
   start.disabled = starting;
   tutorialOption.disabled = starting;
   webcamStatus.textContent = message;
@@ -150,10 +152,10 @@ webcamToggle.addEventListener('click', async () => {
   }
 });
 
-for (const button of [stopWebcamButton, tutorialStopWebcam]) {
+for (const button of stopWebcamButtons) {
   button.addEventListener('click', () => {
     stopWebcam();
-    canvas.focus();
+    (arena.gameOver ? retry : canvas).focus();
   });
 }
 window.addEventListener('pagehide', () => stopWebcam());
@@ -163,7 +165,7 @@ webcam.on('stateChange', (state) => {
     stopWebcam(state.error?.message ?? 'Webcam disconnected.');
     return;
   }
-  if (!running || arena.gameOver || state.status !== 'running') return;
+  if (!running || arena.gameOver || controlsGuide.open || state.status !== 'running') return;
 
   const { hand, changed, actions } = cameraInput.update(state);
   if (changed || hand?.gesture !== 'GRAB') endGrab('webcam');
@@ -243,6 +245,8 @@ function loadArena(nextArena) {
 
 function enterPlay() {
   running = true;
+  sound.unlock();
+  updateMusic();
   startScreen.hidden = true;
   runTools.hidden = Boolean(tutorial);
   tutorialCard.hidden = !tutorial;
@@ -273,6 +277,7 @@ function previewZone() {
 
 function showStagePicker() {
   running = false;
+  updateMusic();
   stopWebcam();
   runTools.hidden = true;
   actionBar.hidden = true;
@@ -293,6 +298,36 @@ restart.addEventListener('click', startRun);
 retry.addEventListener('click', startRun);
 document.querySelector('#change-zone').addEventListener('click', showStagePicker);
 document.querySelector('#end-zones').addEventListener('click', showStagePicker);
+
+function updateMusic() {
+  sound.setMusic(running && !arena.gameOver && !controlsGuide.open && !document.hidden);
+}
+
+soundToggle.addEventListener('click', () => {
+  const enabled = soundToggle.getAttribute('aria-pressed') === 'false';
+  soundToggle.setAttribute('aria-pressed', String(enabled));
+  soundToggle.querySelector('span').textContent = enabled ? 'On' : 'Off';
+  sound.setMuted(!enabled);
+  if (enabled) sound.unlock();
+});
+document.addEventListener('visibilitychange', updateMusic);
+window.addEventListener('pagehide', () => sound.setMusic(false));
+window.addEventListener('pageshow', updateMusic);
+
+for (const button of document.querySelectorAll('[data-show-controls]')) {
+  button.addEventListener('click', () => {
+    pressed.clear();
+    releaseAllGrabs();
+    controlsGuide.showModal();
+    updateMusic();
+  });
+}
+controlsGuide.addEventListener('close', () => {
+  updateMusic();
+  if (running && !arena.gameOver) {
+    (tutorial && getTutorialLesson(tutorial).complete ? enterArena : canvas).focus();
+  }
+});
 
 function updateStatus() {
   const label = zoneLabels[arena.zone];
@@ -358,7 +393,7 @@ function frame(now) {
   const dt = lastFrame === null ? 0 : Math.min((now - lastFrame) / 1000, 0.05);
   lastFrame = now;
 
-  if (running && !arena.gameOver) {
+  if (running && !arena.gameOver && !controlsGuide.open) {
     let dx = 0;
     let dy = 0;
     for (const key of pressed) {
@@ -372,12 +407,13 @@ function frame(now) {
       setHandPosition(arena, arena.handTarget.x + dx * stride, arena.handTarget.y + dy * stride);
     }
     stepArena(arena, dt);
+    if (!document.hidden) sound.syncArena(arena, WIDTH);
     if (tutorial) advanceTutorial(tutorial);
     renderArena();
     updateStatus();
 
     if (arena.gameOver) {
-      stopWebcam();
+      updateMusic();
       result.textContent = `The flock made it ${distance.textContent}.`;
       runTools.hidden = true;
       eventNotice.hidden = true;
