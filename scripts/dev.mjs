@@ -16,6 +16,7 @@ const files = new Map([
   ['/assets/handSleep.png', 'assets/handSleep.png'],
   ['/assets/handGrab.png', 'assets/handGrab.png'],
   ['/assets/duckling.png', 'assets/duckling.png'],
+  ['/assets/target.png', 'assets/target.png'],
   ...['00', '01', '02', '03', '04', '05', '06', '07','08','09','10','11','12'].map((module) => [`/assets/stamina-${module}.png`, `assets/stamina-${module}.png`]),
   ['/assets/pixelify-sans.woff2', 'assets/pixelify-sans.woff2'],
   ...['arena', 'art', 'audio', 'enemies', 'events', 'game', 'tutorial', 'classic-input'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),

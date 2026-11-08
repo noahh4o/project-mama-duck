@@ -175,6 +175,7 @@ export async function createRenderer(context) {
     r: '#c45344', o: '#f68b54', y: '#ffc678',
   }));
   const staminaRing = await createStaminaRing();
+  const targetSprite = await loadImage('./assets/target.png');
   context.imageSmoothingEnabled = false;
 
   return (state, tutorialTarget, showStamina) => {
@@ -194,7 +195,8 @@ export async function createRenderer(context) {
     const exposedDuckCount = inRiver ? countExposedDucks(state.ducks) : 0;
     for (const enemy of state.enemies) {
       if (enemy.hp <= 0) continue;
-      if (enemy.practice) drawPracticeTarget(context, enemy);
+       
+      if (enemy.practice) drawPracticeTarget(context, enemy, targetSprite);
       else if (enemy.type === 'alligator') drawAlligator(context, enemy, exposedDuckCount);
       else if (enemySprites[enemy.type]) drawEnemy(context, enemy, enemySprites[enemy.type], inRiver);
     }
@@ -283,18 +285,11 @@ function rect(context, color, x, y, width, height) {
   context.fillRect(x, y, width, height);
 }
 
-function drawPracticeTarget(context, enemy) {
+function drawPracticeTarget(context, enemy, sprite) {
   const x = Math.round(enemy.x);
   const y = Math.round(enemy.y);
-  rect(context, '#759c7b', x - 12, y + 12, 24, 2);
-  rect(context, '#543f3c', x - 2, y + 4, 4, 9);
-  rect(context, '#543f3c', x - 10, y - 7, 20, 14);
-  rect(context, '#543f3c', x - 7, y - 10, 14, 20);
-  rect(context, '#bc8463', x - 8, y - 6, 16, 12);
-  rect(context, '#bc8463', x - 6, y - 8, 12, 16);
-  rect(context, '#8e4e48', x - 5, y - 5, 10, 10);
-  rect(context, '#f3a461', x - 3, y - 3, 6, 6);
-  rect(context, '#f4dfb2', x - 1, y - 1, 2, 2);
+  context.drawImage(sprite, x+2, y-5);
+
   drawEnemyHealth(context, enemy, y - 10);
 }
 
