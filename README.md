@@ -47,7 +47,9 @@ The QA script compares FOLLOW-only, mixed-gesture and two-hand strategies across
 - debug/hands-debug.html and debug/control-lab.html: standalone diagnostics.
 - ENDLESS.md: current mechanics, architecture and QA details.
 
-The earlier arena/game/tutorial modules and 90-second Homeward prototype remain in the repository with their regression tests as historical work. They are not the current title-screen entry. HOMEWARD.md records the earlier milestones.
+The team's classic arena is available at `/classic.html`, with its Forest/River tutorial, pixel UI, audio, and webcam controls. Select **Webcam** on that title screen; a pinch grabs, horns trigger attack slam, and two converging fists trigger defense slam. Pointer, arrow keys, action buttons, and Z/X/C/Space remain available. Select **Use mouse** to stop camera capture. Its code lives in arena.mjs, art.mjs, game.mjs, audio.mjs, and classic-input.mjs. The classic arena changes stages every 70 m, adds two ducks per stage, and ends after ten losses.
+
+The endless arcade remains the default at `/`. Both modes share the existing hand engine. The 90-second Homeward prototype and its regression tests also remain in the repository; HOMEWARD.md records those earlier milestones.
 
 ## Team workflow
 

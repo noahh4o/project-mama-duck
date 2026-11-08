@@ -11,6 +11,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const files = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
+  ['/classic.html', 'classic.html'],
   ['/style.css', 'style.css'],
   ...['endless.mjs', 'endless-app.mjs', 'arcade-record.mjs', 'homeward.mjs', 'homeward-app.mjs', 'homeward-art.mjs', 'controls-art.mjs', 'homeward.css'].map(path => [`/${path}`, path]),
   ...['hands/hands.mjs', 'hands/tracker.mjs', 'hands/gestures.mjs', 'hands/advanced.mjs', 'hands/slash.mjs', 'hands/horns.mjs', 'hands/input-adapter.mjs', 'debug/hands-debug.html', 'debug/hands-debug.mjs', 'debug/control-lab.html', 'debug/control-lab.mjs'].map(path => [`/${path}`, path]),
@@ -19,13 +20,15 @@ const files = new Map([
   ['/assets/handSleep.png', 'assets/handSleep.png'],
   ['/assets/handGrab.png', 'assets/handGrab.png'],
   ['/assets/duckling.png', 'assets/duckling.png'],
-  ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
+  ['/assets/pixelify-sans.woff2', 'assets/pixelify-sans.woff2'],
+  ...['arena', 'art', 'audio', 'enemies', 'events', 'game', 'tutorial', 'classic-input'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
 ]);
 const contentTypes = {
   html: 'text/html; charset=utf-8',
   css: 'text/css; charset=utf-8',
   mjs: 'text/javascript; charset=utf-8',
   png: 'image/png',
+  woff2: 'font/woff2',
 };
 
 const server = createServer(async (request, response) => {

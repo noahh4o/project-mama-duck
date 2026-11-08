@@ -1,6 +1,6 @@
 import {
   ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, alligatorJaw, countExposedDucks,
-  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE
+  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE, MAX_STAMINA
 } from './arena.mjs';
 
 const duckPixels = [
@@ -174,9 +174,10 @@ export async function createRenderer(context) {
   const flames = flameFrames.map((rows) => pixelSprite(rows, {
     r: '#c45344', o: '#f68b54', y: '#ffc678',
   }));
+  const staminaRing = createStaminaRing();
   context.imageSmoothingEnabled = false;
 
-  return (state, tutorialTarget) => {
+  return (state, tutorialTarget, showStamina) => {
     const inRiver = state.zone === 'river';
     const burned = state.zone === 'burnedForest';
     if (inRiver) drawRiver(context, state.scroll);
@@ -244,7 +245,46 @@ export async function createRenderer(context) {
     }
     if (state.lightning) drawLightning(context, state.lightning);
     if (state.meteor) drawMeteor(context, state.meteor);
+    if (showStamina) drawStaminaRing(context, state, staminaRing);
   };
+}
+
+const STAMINA_SEGMENTS = 12;
+
+function createStaminaRing() {
+  const radius = 10;
+  const size = radius * 2 + 1;
+  const fullTurn = 2 * Math.PI;
+  const layout = Array.from({ length: size }, (_, row) => Array.from({ length: size }, (_, column) => {
+    const x = column - radius;
+    const y = row - radius;
+    const distance = Math.hypot(x, y);
+    if (distance > radius || distance < radius - 4) return { kind: '.' };
+    const angle = (Math.atan2(x, -y) + fullTurn) % fullTurn;
+    const slot = angle / fullTurn * STAMINA_SEGMENTS;
+    const segment = Math.floor(slot);
+    if (distance > radius - 1 || distance < radius - 3 || slot - segment > 0.84) return { kind: 'e' };
+    return { kind: distance > radius - 2 ? 'l' : 'g', segment };
+  }));
+  const rowsFor = (filled) => layout.map((row) => row.map(({ kind, segment }) => (
+    segment === undefined || segment < filled ? kind : 'u'
+  )).join(''));
+  const palette = { e: '#213034', l: '#fff0ae', g: '#ffc653', u: '#59636a' };
+  return {
+    radius,
+    frames: Array.from({ length: STAMINA_SEGMENTS + 1 }, (_, filled) => pixelSprite(rowsFor(filled), palette)),
+    cooldown: pixelSprite(rowsFor(0), { e: '#8d4748', u: '#4f383f' }),
+  };
+}
+
+function drawStaminaRing(context, { hand, stamina, cooldown }, ring) {
+  const { radius } = ring;
+  const offsetX = HAND_WIDTH * HAND_SCALE * 0.4;
+  const offsetY = HAND_HEIGHT * HAND_SCALE * 0.4;
+  const x = Math.min(WIDTH - radius - 1, Math.round(hand.x + offsetX));
+  const y = Math.min(HEIGHT - radius - 1, Math.round(hand.y + offsetY));
+  const filled = Math.ceil(stamina / MAX_STAMINA * STAMINA_SEGMENTS);
+  context.drawImage(cooldown > 0 ? ring.cooldown : ring.frames[filled], x - radius, y - radius);
 }
 
 function rect(context, color, x, y, width, height) {

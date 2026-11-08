@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101e2b">
+  <title>Motherduck · Classic Arena</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="screen" aria-label="Motherduck game">
+    <canvas width="320" height="180" tabindex="-1" aria-label="Motherduck. Move the hand with the pointer or arrow keys to nudge ducks.">
+      Motherduck needs a browser with Canvas support.
+    </canvas>
+
+    <div class="hud" aria-label="Run status">
+      <div class="stats">
+        <div class="stat"><span>Flock</span><strong id="remaining">14</strong></div>
+        <div class="stat losses"><span>Lost</span><strong id="losses">0 / 10</strong></div>
+        <div class="stat"><span>Distance</span><strong id="distance">0 m</strong></div>
+      </div>
+      <div id="stamina-widget" class="stamina-status" hidden>
+        <div id="stamina-meter" role="meter" aria-label="Stamina" aria-valuemin="0"></div>
+        <small id="hand-status" role="status"></small>
+      </div>
+      <div class="run-tools" id="run-tools" hidden>
+        <span class="zone-chip"><span id="zone-name"></span><span id="stage-progress"></span></span>
+        <div>
+          <button type="button" data-show-controls>Controls</button>
+          <button id="restart" type="button">Restart</button>
+          <button id="change-zone" type="button">Zones</button>
+        </div>
+        <button id="stop-webcam" type="button" hidden>Use mouse</button>
+      </div>
+    </div>
+
+    <div class="event-notice" id="event-notice" role="status" hidden></div>
+
+    <section class="tutorial-card" id="tutorial-card" aria-label="Tutorial lesson" hidden>
+      <div class="tutorial-heading">
+        <span id="lesson-progress"></span>
+        <button type="button" data-show-controls>Controls</button>
+        <button id="tutorial-stop-webcam" type="button" hidden>Use mouse</button>
+        <button id="skip-lesson" type="button">Skip tutorial</button>
+      </div>
+      <div role="status">
+        <h2 id="lesson-title"></h2>
+        <p id="lesson-prompt"></p>
+      </div>
+      <button id="enter-arena" type="button" hidden>Enter arena</button>
+    </section>
+
+    <div class="hand-actions" id="hand-actions" role="group" aria-label="Hand actions" hidden>
+      <button type="button" data-action="punch" aria-keyshortcuts="Z"><kbd>Z</kbd> Punch</button>
+      <button type="button" data-action="attackSlam" aria-keyshortcuts="X"><kbd>X</kbd> Attack slam</button>
+      <button type="button" data-action="defenseSlam" aria-keyshortcuts="C"><kbd>C</kbd> Defense slam</button>
+      <button type="button" data-action="grab" aria-keyshortcuts="Space"><kbd>Space</kbd> <span id="grab-label">Grab</span></button>
+    </div>
+
+    <div class="menu" id="start-screen">
+      <div class="card title-card">
+        <p class="eyebrow">Keep the flock alive</p>
+        <div class="title-mark">
+          <img src="./assets/duckling.png" alt="" width="64" height="64">
+          <h1>Mother<span>duck</span></h1>
+        </div>
+        <fieldset class="stage-picker" id="stage-picker">
+          <legend>Starting zone</legend>
+          <label><input type="radio" name="zone" value="forest" checked><span>Forest</span></label>
+          <label><input type="radio" name="zone" value="river"><span>River</span></label>
+        </fieldset>
+        <div class="menu-actions">
+          <button id="start" class="primary" type="button">Start tutorial</button>
+          <button id="tutorial-option" type="button">Skip tutorial</button>
+          <button id="toggle-webcam" type="button" aria-pressed="false">Webcam</button>
+          <button type="button" data-show-controls>How to play</button>
+        </div>
+        <p><a href="./">Play Endless Arcade</a></p>
+        <p id="webcam-status" role="status" hidden></p>
+      </div>
+    </div>
+
+    <div class="menu" id="end-screen" hidden>
+      <div class="card">
+        <p class="eyebrow">Run ended</p>
+        <h2>Ten ducks lost.</h2>
+        <p id="result"></p>
+        <div class="menu-actions">
+          <button type="button" class="primary" id="retry">Try again</button>
+          <button type="button" data-show-controls>Controls</button>
+          <button type="button" id="end-stop-webcam" hidden>Use mouse</button>
+          <button type="button" id="end-zones">Zones</button>
+        </div>
+      </div>
+    </div>
+
+    <dialog class="card controls-guide" id="controls-guide" aria-labelledby="controls-title">
+      <header>
+        <h2 id="controls-title">How to play</h2>
+        <form method="dialog">
+          <button id="sound-toggle" type="button" aria-pressed="true">Sound <span aria-hidden="true">On</span></button>
+          <button type="submit" autofocus>Back</button>
+        </form>
+      </header>
+      <ul>
+        <li>
+          <img src="./assets/handOpen.png" alt="">
+          <div><h3>Move and nudge</h3><p>Move one hand on camera, move your pointer, or use the arrow keys. Slide the hand against nearby ducks to nudge them.</p></div>
+        </li>
+        <li>
+          <img src="./assets/handGrab.png" alt="">
+          <div><h3>Grab <kbd>Space</kbd></h3><p>Pinch your thumb and index finger, or hold Space. Nearby ducks stay protected until you let go or the hold times out.</p></div>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" aria-hidden="true" shape-rendering="crispEdges">
+            <path fill="#805d50" d="M3 2h6v9h6V2h6v17h-3v4H6v-4H3z"/>
+            <path fill="#ffd69b" d="M5 4h2v9h10V4h2v13h-3v4H8v-4H5z"/>
+            <path fill="#cf936a" d="M8 14h8v3H8z"/>
+          </svg>
+          <div><h3>Attack slam <kbd>X</kbd></h3><p>Hold up your index finger and pinky with the other fingers and thumb tucked, or press X. Hits enemies near the hand.</p></div>
+        </li>
+        <li>
+          <svg viewBox="0 0 32 24" aria-hidden="true" shape-rendering="crispEdges">
+            <path fill="#805d50" d="M1 11h12v10H1zM19 11h12v10H19z"/>
+            <path fill="#ffd69b" d="M3 13h8v6H3zM21 13h8v6h-8z"/>
+            <path fill="#cf936a" d="M3 15h8v2H3zM21 15h8v2h-8z"/>
+            <path fill="none" stroke="#b9d0aa" stroke-width="2" d="M4 5h8m-3-3 3 3-3 3m19-3h-8m3-3-3 3 3 3"/>
+          </svg>
+          <div><h3>Defense slam <kbd>C</kbd></h3><p>Start with two fists apart and bring them close, or press C. Pushes ducks away from danger and puts out flames on them.</p></div>
+        </li>
+        <li>
+          <img src="./assets/handHit.png" alt="">
+          <div><h3>Punch <kbd>Z</kbd></h3><p>Press Z or tap Punch to hit an enemy at close range.</p></div>
+        </li>
+      </ul>
+      <p>Action buttons also work in webcam mode. Opening this guide pauses the run.</p>
+    </dialog>
+  </main>
+  <script type="module" src="./game.mjs"></script>
+</body>
+</html>
