@@ -31,8 +31,8 @@ const lessonPrompt = document.querySelector('#lesson-prompt');
 const enterArena = document.querySelector('#enter-arena');
 const actionBar = document.querySelector('#hand-actions');
 const actionButtons = [...actionBar.querySelectorAll('button')];
-const grabLabel = document.querySelector('#grab-label');
 const staminaMeter = document.querySelector('#stamina-meter');
+const staminaWidget = document.querySelector('#stamina-widget');
 staminaMeter.setAttribute('aria-valuemax', String(MAX_STAMINA));
 const staminaFill = document.querySelector('#stamina-fill');
 const handStatus = document.querySelector('#hand-status');
@@ -42,7 +42,7 @@ const handsController = createHandsController();
 const inputAdapter = createGameplayInputAdapter({ width: WIDTH, height: HEIGHT, mirror: true });
 let webcamActive = false, webcamState = { hands: [] };
 handsController.on('stateChange', state => { webcamState = state; });
-const render = createRenderer(canvas.getContext('2d'));
+const render = await createRenderer(canvas.getContext('2d'));
 const shortcuts = new Map([['z', 'punch'], ['x', 'attackSlam'], ['c', 'defenseSlam'], [' ', 'grab']]);
 const directions = new Map([
   ['ArrowLeft', [-1, 0]],
@@ -51,6 +51,7 @@ const directions = new Map([
   ['ArrowDown', [0, 1]],
 ]);
 const pressed = new Set();
+const grabInputs = new Set();
 const zoneLabels = { forest: 'Forest', river: 'River', burnedForest: 'Burned Forest', practice: 'Tutorial' };
 
 const selectedZone = () => stagePicker.querySelector('input:checked').value;
@@ -73,22 +74,52 @@ function moveHand(event) {
 canvas.addEventListener('pointermove', moveHand);
 canvas.addEventListener('pointerdown', moveHand);
 
-function selectedAction(action) {
-  return action === 'grab' && arena.heldDuckIds.length ? 'release' : action;
-}
-
 function triggerAction(action) {
-  const command = selectedAction(action);
-  if (!running || (tutorial && getTutorialLesson(tutorial).action !== command)) return;
-  if (!performHandAction(arena, command)) return;
-  if (tutorial) advanceTutorial(tutorial, command);
+  if (!running || (tutorial && getTutorialLesson(tutorial).action !== action)) return;
+  if (!performHandAction(arena, action)) return;
+  if (tutorial) advanceTutorial(tutorial, action);
   renderArena();
   updateStatus();
 }
 
+function startGrab(source) {
+  if (grabInputs.has(source)) return;
+  const shouldGrab = grabInputs.size === 0;
+  grabInputs.add(source);
+  if (shouldGrab) triggerAction('grab');
+}
+
+function endGrab(source) {
+  if (!grabInputs.delete(source)) return;
+  if (grabInputs.size === 0 && arena.heldDuckIds.length) triggerAction('release');
+}
+
+function releaseAllGrabs() {
+  const wasGrabbing = grabInputs.size > 0;
+  grabInputs.clear();
+  if (wasGrabbing && arena.heldDuckIds.length) triggerAction('release');
+}
+
 for (const button of actionButtons) {
+  if (button.dataset.action === 'grab') {
+    button.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !event.isPrimary) return;
+      event.preventDefault();
+      startGrab(`pointer:${event.pointerId}`);
+    });
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      event.preventDefault();
+      if (!event.repeat) startGrab('button-key');
+    });
+    button.addEventListener('keyup', (event) => {
+      if (event.key !== ' ' && event.key !== 'Enter') return;
+      event.preventDefault();
+      endGrab('button-key');
+    });
+  }
   button.addEventListener('click', (event) => {
-    triggerAction(button.dataset.action);
+    if (button.dataset.action !== 'grab') triggerAction(button.dataset.action);
     const lessonComplete = tutorial && getTutorialLesson(tutorial).complete;
     if ((tutorial || event.detail > 0) && !arena.gameOver && !lessonComplete) canvas.focus();
   });
@@ -99,7 +130,9 @@ canvas.addEventListener('keydown', (event) => {
   const action = shortcuts.get(event.key.toLowerCase());
   if (action) {
     event.preventDefault();
-    if (!event.repeat) triggerAction(action);
+    if (action === 'grab') {
+      if (!event.repeat) startGrab('shortcut');
+    } else if (!event.repeat) triggerAction(action);
     return;
   }
   if (!directions.has(event.key)) return;
@@ -107,8 +140,16 @@ canvas.addEventListener('keydown', (event) => {
   pressed.add(event.key);
 });
 
-window.addEventListener('keyup', (event) => pressed.delete(event.key));
-window.addEventListener('blur', () => pressed.clear());
+window.addEventListener('pointerup', (event) => endGrab(`pointer:${event.pointerId}`));
+window.addEventListener('pointercancel', (event) => endGrab(`pointer:${event.pointerId}`));
+window.addEventListener('keyup', (event) => {
+  if (event.key === ' ') endGrab('shortcut');
+  pressed.delete(event.key);
+});
+window.addEventListener('blur', () => {
+  pressed.clear();
+  releaseAllGrabs();
+});
 canvas.addEventListener('blur', () => pressed.clear());
 
 function renderArena() {
@@ -210,6 +251,15 @@ function updateStatus() {
     const progress = `Stage ${arena.stage} · ${stageMeters}/${STAGE_DISTANCE} m`;
     if (stageProgress.textContent !== progress) stageProgress.textContent = progress;
   }
+  const screenRect = canvas.parentElement.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+
+  staminaWidget.style.left =
+    `${canvasRect.left - screenRect.left + arena.hand.x * canvasRect.width / WIDTH}px`;
+  staminaWidget.style.top =
+    `${canvasRect.top - screenRect.top + arena.hand.y * canvasRect.height / HEIGHT}px`;
+
+
   remaining.textContent = arena.ducks.filter(({ alive }) => alive).length;
   losses.textContent = `${arena.deaths} / ${DEATH_LIMIT}`;
   distance.textContent = `${Math.floor(arena.scroll / PIXELS_PER_METER)} m`;
@@ -218,15 +268,16 @@ function updateStatus() {
   const cooldown = Math.ceil(arena.cooldown);
   if (staminaMeter.getAttribute('aria-valuenow') !== stamina) {
     staminaMeter.setAttribute('aria-valuenow', stamina);
-    staminaFill.style.transform = `scaleX(${Number(stamina) / MAX_STAMINA})`;
-  }
+ }
+ staminaMeter.style.setProperty(
+  '--stamina',
+  `${arena.stamina / MAX_STAMINA * 100}%`,
+);
   staminaMeter.classList.toggle('cooldown', cooldown > 0);
   const status = webcamActive
     ? `Webcam · ${webcamState.hands?.filter(hand => hand.trackingStatus === 'tracked').map(hand => `${hand.id}: ${hand.gesture}`).join(' · ') || 'tracking…'}`
     : cooldown ? `Cooldown ${cooldown}s` : held ? `Holding ${held}` : '';
   if (handStatus.textContent !== status) handStatus.textContent = status;
-  const grabText = held ? 'Release' : 'Grab';
-  if (grabLabel.textContent !== grabText) grabLabel.textContent = grabText;
   const lesson = tutorial ? getTutorialLesson(tutorial) : null;
   if (lesson && lessonTitle.textContent !== lesson.title) {
     lessonProgress.textContent = `Lesson ${tutorial.index + 1}/${TUTORIAL_LESSON_COUNT}`;
@@ -236,10 +287,11 @@ function updateStatus() {
     if (lesson.complete) enterArena.focus();
   }
   for (const button of actionButtons) {
-    const action = selectedAction(button.dataset.action);
-    const expected = lesson?.action === action;
+    const action = button.dataset.action;
+    const expected = lesson?.action === action || (action === 'grab' && lesson?.action === 'release');
     button.classList.toggle('lesson-action', expected);
-    const unavailable = String((lesson && !expected) || !canPerformHandAction(arena, action));
+    const canRelease = action === 'grab' && held > 0 && canPerformHandAction(arena, 'release');
+    const unavailable = String((lesson && !expected) || (!canPerformHandAction(arena, action) && !canRelease));
     if (button.getAttribute('aria-disabled') !== unavailable) button.setAttribute('aria-disabled', unavailable);
     const cost = `${ACTION_COSTS[action]} stamina`;
     if (button.title !== cost) button.title = cost;

@@ -13,16 +13,18 @@
       Motherduck needs a browser with Canvas support.
     </canvas>
 
+    <div id = stamina-widget class="stat stamina">
+        <span id="stamina-label">Stamina</span>
+        <div id="stamina-meter" role="meter" aria-labelledby="stamina-label" aria-valuemin="0"><div id="stamina-fill"></div></div>
+        <small id="hand-status" role="status"></small>
+    </div>
+
     <div class="hud" aria-label="Run status">
       <div class="stats">
         <div class="stat"><span>Flock</span><strong id="remaining">14</strong></div>
         <div class="stat losses"><span>Lost</span><strong id="losses">0 / 10</strong></div>
         <div class="stat"><span>Distance</span><strong id="distance">0 m</strong></div>
-        <div class="stat stamina">
-          <span id="stamina-label">Stamina</span>
-          <div id="stamina-meter" role="meter" aria-labelledby="stamina-label" aria-valuemin="0"><div id="stamina-fill"></div></div>
-          <small id="hand-status" role="status"></small>
-        </div>
+
       </div>
       <div class="run-tools" id="run-tools" hidden>
         <span class="zone-chip"><span id="zone-name"></span><span id="stage-progress"></span></span>

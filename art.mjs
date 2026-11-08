@@ -1,6 +1,6 @@
 import {
   ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, alligatorJaw, countExposedDucks,
-  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH,
+  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE
 } from './arena.mjs';
 
 const duckPixels = [
@@ -150,17 +150,24 @@ function pixelSprite(rows, palette) {
   });
   return sprite;
 }
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load ${src}`));
+    image.src = src;
+  });
+}
 
-export function createRenderer(context) {
-  const duck = pixelSprite(duckPixels, {
-    n: '#334d65', t: '#8bc2c4', s: '#709caf', k: '#102e3d', o: '#f49a58',
-  });
-  const hand = pixelSprite(handPixels, {
-    n: '#334d65', p: '#f4dfb2', s: '#d39b74',
-  });
-  const tiredHand = pixelSprite(handPixels, {
-    n: '#334d65', p: '#afbdba', s: '#738d91',
-  });
+
+export async function createRenderer(context) {
+  const [hand, handHit, handSleep, handGrab, duck] = await Promise.all([
+    loadImage('./assets/handOpen.png'),
+    loadImage('./assets/handHit.png'),
+    loadImage('./assets/handSleep.png'),
+    loadImage('./assets/handGrab.png'),
+    loadImage('./assets/duckling.png')
+  ]);
   const enemySprites = Object.fromEntries(
     Object.entries(enemyArt).map(([type, { rows, colors }]) => [type, pixelSprite(rows, colors)]),
   );
@@ -212,12 +219,22 @@ export function createRenderer(context) {
       drawDuckBurn(context, duckling, state.scroll, flames);
     }
     if (state.actionEffect) drawActionEffect(context, state.actionEffect);
-    context.drawImage(
-      state.cooldown > 0 ? tiredHand : hand,
-      Math.round(state.hand.x - HAND_WIDTH / 2),
-      Math.round(state.hand.y - HAND_HEIGHT / 2),
-      HAND_WIDTH, HAND_HEIGHT,
-    );
+    let handImg = hand;
+    if (state.cooldown > 0) {
+      handImg = handSleep;
+    } else if (state.heldDuckIds.length > 0) {
+      handImg = handGrab;
+    } else if (state.actionEffect) {
+      handImg = handHit;
+    }
+    if (handImg != null) {
+      context.drawImage(
+        handImg,
+        Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
+        Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
+        HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
+      );
+    }
     for (const duckling of heldDucks) {
       const x = Math.round(duckling.x - DUCK_WIDTH / 2);
       const y = Math.round(duckling.y - DUCK_HEIGHT / 2);
@@ -502,6 +519,7 @@ function drawFire(context, obstacle, scroll, flames) {
   const x = Math.round(obstacle.x);
   const { y, width, height } = obstacle;
   const bottom = y + height;
+
   const frame = Math.floor(scroll / 6) % flames.length;
   rect(context, '#684651', x, bottom - 5, width, 4);
   rect(context, '#a25b50', x + 3, bottom - 7, width - 6, 3);
@@ -509,7 +527,7 @@ function drawFire(context, obstacle, scroll, flames) {
     const variation = (offset * 3 + Math.floor(scroll / 8)) % 9;
     const size = height - variation - (offset === 0 ? 9 : 1);
     const tongueWidth = Math.min(width - offset, 14);
-    context.drawImage(flames[(frame + offset) % flames.length], x + offset, bottom - size, tongueWidth, size);
+    context.drawImage(flames[(frame + offset) % flames.length], x + offset, bottom - size, size, size);
   }
 }
 
