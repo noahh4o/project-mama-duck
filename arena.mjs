@@ -17,7 +17,7 @@ export const SCROLL_SPEED = 44;
 export const STAGE_DISTANCE = 70;
 export const STAGE_REINFORCEMENTS = 2;
 export const ACTION_COSTS = Object.freeze({
-  attackSlam: 40, defenseSlam: 30, grab: 24, release: 0,
+  attackSlam: 18, defenseSlam: 30, grab: 24, release: 0,
 });
 
 const FLOCK_SIZE = 14;
