@@ -15,14 +15,21 @@ export function createClassicWebcamInput({ width, height }) {
       const changed = primaryId !== hand?.handId;
       primaryId = hand?.handId;
 
-      const actions = [];
-      if (hand) {
-        for (const command of commands) {
-          if (command.type === 'attack' && command.handId === primaryId) actions.push('attackSlam');
-          if (command.type === 'gap' && command.handIds?.includes(primaryId)) actions.push('defenseSlam');
-        }
+      const actionCommands = [];
+      for (const command of commands) {
+        if (command.type === 'attack') actionCommands.push({ action: 'attackSlam', handId: command.handId });
+        if (command.type === 'gap') actionCommands.push({ action: 'defenseSlam', handIds: command.handIds });
       }
-      return { hand, changed, actions };
+      return {
+        hand,
+        hands,
+        commands,
+        changed,
+        actionCommands,
+        actions: actionCommands
+          .filter((command) => command.action === 'defenseSlam' || command.handId === primaryId)
+          .map(({ action }) => action),
+      };
     },
   };
 }

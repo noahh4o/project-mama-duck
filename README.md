@@ -13,13 +13,13 @@ npm run dev
 
 Open [the arena](http://127.0.0.1:8000/), pick **Forest** or **River**, then start or skip the tutorial. Use the pointer or arrow keys to nudge ducks away from enemies. Select **Zones** to return to the picker.
 
-For camera input, select **Webcam** on the title screen and allow camera access. Move one hand to aim the original cursor. Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for defense slam. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe.
+For camera input, select **Webcam** on the title screen and allow camera access. A spread palm attracts ducks (**FOLLOW**) and a fist pushes them away (**REPEL**). Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for defense slam. Once the flock reaches six ducks, left and right hands independently steer the two color-marked flocks. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe; if a content blocker prevents the download, disable it for localhost or continue with mouse and keyboard.
 
 The defaults work on a fresh clone. To change the server host or port, copy `.env.example` to `.env` and edit it. Use `cp .env.example .env` on macOS or Linux, or `Copy-Item .env.example .env` in PowerShell. Put shared defaults in `.env.example` and keep personal settings in the ignored `.env`.
 
 The dev server serves the browser files listed in `scripts/dev.mjs`. Add any new browser modules to that list when introducing them.
 
-Every 70 m, the run picks a new Forest or River stage and adds two ducks. Surviving ducks, burn damage, distance, and losses carry across stages. The tenth loss ends the run.
+The live run is an endless arcade mode. It starts with three ducks, recruits stray ducklings, tracks score and a browser-local best score, and unlocks two-flock control at six ducks. Every 70 m, the run picks a new Forest or River stage while surviving ducks, burn damage, distance, and losses carry forward. The run ends when no living ducks remain.
 
 ## Team workflow
 
@@ -38,4 +38,4 @@ Use the in-game action buttons or press **Z** to punch, **X** for attack slam, *
 
 A meteor transforms Forest into Burned Forest during the run. Fallen logs push ducks backward. Ducks can cross ground fires, but burn damage builds on contact and lingers after they leave. Use defense slam to extinguish nearby ducks. Lightning can appear in any playable zone.
 
-The simulation lives in `arena.mjs`, the Canvas renderer in `art.mjs`, and the browser controls and HUD in `game.mjs`. The arena takes logical hand coordinates through `setHandPosition`.
+The authoritative simulation lives in `arena.mjs`, the team's Canvas presentation remains in `art.mjs`, and the browser controls and HUD live in `game.mjs`. Mouse input enters through `setHandPosition`; tracked hands enter through `setHandStates` after `classic-input.mjs` maps the MediaPipe controller state.

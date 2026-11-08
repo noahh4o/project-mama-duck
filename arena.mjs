@@ -1,7 +1,7 @@
 import { advanceEnemies, alligatorJaw, countExposedDucks, startEncounters } from './enemies.mjs';
 import { advanceArenaEvents, createEventSchedule } from './events.mjs';
 
-export { alligatorJaw, ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, countExposedDucks } from './enemies.mjs';
+export { alligatorJaw, ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, countExposedDucks, foxAttackCorridor } from './enemies.mjs';
 export const WIDTH = 320;
 export const HEIGHT = 180;
 export const HAND_WIDTH = 48;
@@ -21,6 +21,9 @@ export const ACTION_COSTS = Object.freeze({
 });
 
 const FLOCK_SIZE = 14;
+const ARCADE_STARTING_FLOCK = 3;
+const ARCADE_MAX_FLOCK = 24;
+const RECRUIT_INTERVAL = 9;
 const STAGE_SCROLL = STAGE_DISTANCE * PIXELS_PER_METER;
 const STAGE_NOTICE_SECONDS = 2;
 const HAND_SPEED = 720;
@@ -87,7 +90,7 @@ function flockSlot(index, count) {
 function createDuck(id, index, count) {
   const slot = flockSlot(index, count);
   return {
-    id, ...slot, cruiseX: slot.x, alive: true, protected: false,
+    id, ...slot, cruiseX: slot.x, alive: true, protected: false, flock: 'A',
     burnTime: 0, burnDamage: 0, fireGrace: 0,
   };
 }
@@ -111,7 +114,7 @@ function advanceStage(state) {
   resetLiveZone(state, state.progressionSeed ^ 0x9e3779b9);
 
   state.ducks = state.ducks.filter((duck) => duck.alive);
-  const count = state.ducks.length + STAGE_REINFORCEMENTS;
+  const count = state.ducks.length + (state.arcade ? 0 : STAGE_REINFORCEMENTS);
   for (const [index, duck] of state.ducks.entries()) {
     const slot = flockSlot(index, count);
     duck.cruiseX = slot.x;
@@ -123,21 +126,27 @@ function advanceStage(state) {
   }
 }
 
-export function createArena(zone = 'practice', { seed, progression = false, tutorial = false } = {}) {
+export function createArena(zone = 'practice', { seed, progression = false, tutorial = false, arcade = false } = {}) {
   const live = zone === 'forest' || zone === 'river';
   const hand = { x: 124, y: HEIGHT / 2 }; // starting pos of hand
-  const ducks = Array.from({ length: FLOCK_SIZE }, (_, id) => createDuck(id, id, FLOCK_SIZE));
+  const initialFlock = arcade && live ? ARCADE_STARTING_FLOCK : FLOCK_SIZE;
+  const ducks = Array.from({ length: initialFlock }, (_, id) => createDuck(id, id, initialFlock));
   const progressionSeed = progression && live ? (seed ?? Math.floor(Math.random() * 0x100000000)) >>> 0 : null;
   const state = {
-    hand, handTarget: { ...hand }, ducks, deaths: 0, gameOver: false,
-    scroll: 0, obstacles: [], obstacleIndex: 0,
+    hand, handTarget: { ...hand },
+    hands: new Map([['primary', { id: 'primary', hand: { ...hand }, target: { ...hand }, gesture: 'NEUTRAL', trackingValid: false, flock: 'A' }]]),
+    handOwners: new Map(), gapFormation: null, ducks, deaths: 0, gameOver: false,
+    scroll: 0, worldSpeed: 1, elapsed: 0, obstacles: [], obstacleIndex: 0,
     stamina: MAX_STAMINA, cooldown: 0, regenDelay: 0,
-    heldDuckIds: [], holdTime: 0,
+    heldDuckIds: [], heldByHandId: null, holdTime: 0,
     zone: live ? zone : 'practice', tutorial: !live && tutorial,
-    stage: 1, stageStartScroll: 0, stageNotice: 0, progressionSeed, nextDuckId: FLOCK_SIZE,
+    stage: 1, stageStartScroll: 0, stageNotice: 0, progressionSeed, nextDuckId: initialFlock,
     enemies: [],
     actionEffect: null,
     eventSchedule: null, meteor: null, lightning: null,
+    arcade: Boolean(arcade && live), score: 0, highScore: 0, maxFlock: initialFlock,
+    stats: { recruited: 0, dodges: 0, rescues: 0 }, recruit: null,
+    nextRecruitTime: arcade && live ? 5 : RECRUIT_INTERVAL, twoFlocks: false,
   };
   if (live) {
     resetLiveZone(state, seed ?? progressionSeed ?? undefined);
@@ -154,13 +163,78 @@ export function setHandPosition(state, x, y) {
   var halfHeight = HAND_HEIGHT / 2 * HAND_SCALE;
   state.handTarget.x = clamp(x, halfWidth, WIDTH - halfWidth);
   state.handTarget.y = clamp(y, halfHeight, HEIGHT - halfHeight);
+  const primary = state.hands?.get('primary');
+  if (primary) primary.target = { ...state.handTarget };
+}
+
+function assignHandFlocks(state, hands) {
+  if (!state.twoFlocks) return new Map(hands.map((hand) => [hand.handId, 'A']));
+  const next = new Map();
+  const claimed = new Set();
+  for (const hand of hands) {
+    const previous = state.handOwners.get(hand.handId);
+    if (previous && !claimed.has(previous)) { next.set(hand.handId, previous); claimed.add(previous); }
+  }
+  for (const hand of hands) {
+    if (next.has(hand.handId)) continue;
+    const preferred = hand.handedness === 'Left' ? 'A' : hand.handedness === 'Right' ? 'B' : null;
+    const flock = preferred && !claimed.has(preferred) ? preferred : (claimed.has('A') ? 'B' : 'A');
+    next.set(hand.handId, flock); claimed.add(flock);
+  }
+  return next;
+}
+
+export function setHandStates(state, hands = []) {
+  if (state.gameOver || !state.hands) return;
+  const valid = hands.filter((input) => input?.handId && input.trackingValid
+    && Number.isFinite(input.target?.x) && Number.isFinite(input.target?.y));
+  const owners = assignHandFlocks(state, valid);
+  const next = new Map();
+  for (const input of valid) {
+    const previous = state.hands.get(input.handId) ?? {
+      id: input.handId, hand: { ...state.hand }, target: { ...state.hand }, gesture: 'NEUTRAL', trackingValid: true,
+    };
+    previous.target = {
+      x: clamp(input.target.x, HAND_WIDTH / 2, WIDTH - HAND_WIDTH / 2),
+      y: clamp(input.target.y, HAND_HEIGHT / 2, HEIGHT - HAND_HEIGHT / 2),
+    };
+    previous.gesture = input.gesture ?? 'NEUTRAL';
+    previous.handedness = input.handedness;
+    previous.trackingValid = true;
+    previous.flock = owners.get(input.handId) ?? 'A';
+    next.set(input.handId, previous);
+  }
+  state.handOwners = owners;
+  state.hands = next.size ? next : new Map();
+}
+
+export function setGapFormation(state, center) {
+  state.gapFormation = center && Number.isFinite(center.x) && Number.isFinite(center.y)
+    ? { x: center.x, y: center.y, remaining: 0.45 }
+    : null;
+}
+
+export function getArenaSummary(state) {
+  const living = state.ducks.filter((duck) => duck.alive);
+  return {
+    flock: living.length,
+    flockA: living.filter((duck) => duck.flock !== 'B').length,
+    flockB: living.filter((duck) => duck.flock === 'B').length,
+    losses: state.deaths,
+    distance: Math.floor(state.scroll / PIXELS_PER_METER),
+    score: Math.floor(state.score ?? 0),
+    stage: state.stage,
+    gameOver: state.gameOver,
+  };
 }
 
 function loseDuck(state, duck) {
   if (state.tutorial) return;
   duck.alive = false;
   state.deaths += 1;
-  state.gameOver = state.deaths >= DEATH_LIMIT;
+  state.gameOver = state.arcade
+    ? state.ducks.every((candidate) => !candidate.alive)
+    : state.deaths >= DEATH_LIMIT;
 }
 
 export function hitDuck(state, id) {
@@ -210,6 +284,7 @@ function releaseDucks(state) {
     if (state.heldDuckIds.includes(duck.id)) duck.protected = false;
   }
   state.heldDuckIds = [];
+  state.heldByHandId = null;
   state.holdTime = 0;
 }
 
@@ -269,11 +344,19 @@ function knockDuckToSafety(state, duck, barriers) {
   }
 }
 
-export function performHandAction(state, action) {
+export function performHandAction(state, action, handId) {
   if (!canPerformHandAction(state, action)) return false;
 
+  const actionHand = handId ? state.hands?.get(handId)?.hand : null;
+  const previousHand = state.hand;
+  if (actionHand) state.hand = actionHand;
+
   const radius = ACTION_RADIUS[action];
-  if (action === 'grab' && !grabDucks(state, radius)) return false;
+  if (action === 'grab' && !grabDucks(state, radius)) {
+    state.hand = previousHand;
+    return false;
+  }
+  if (action === 'grab') state.heldByHandId = handId ?? null;
   if (action === 'release') releaseDucks(state);
   if (action === 'punch' || action === 'attackSlam') attackEnemies(state, action, radius);
   if (action === 'defenseSlam') {
@@ -302,6 +385,7 @@ export function performHandAction(state, action) {
     }
   }
   state.actionEffect = { action, ...state.hand, remaining: 0.28, radius };
+  if (actionHand) state.hand = previousHand;
   return true;
 }
 
@@ -349,6 +433,54 @@ function nudgeDuck(duck, hand) {
   duck.y = hand.y + Math.sin(angle) * CONTACT_DISTANCE;
 }
 
+function steeringVector(duck, hand, gesture) {
+  const dx = hand.x - duck.x;
+  const dy = hand.y - duck.y;
+  const distance = Math.hypot(dx, dy) || 1;
+  if (distance > 120) return { x: 0, y: 0 };
+  const falloff = 1 - distance / 120;
+  const direction = gesture === 'FOLLOW' ? 1 : -1;
+  const strength = direction * (0.45 + falloff * 1.15);
+  return { x: dx / distance * strength, y: dy / distance * strength };
+}
+
+function unlockTwoFlocks(state) {
+  if (state.twoFlocks || state.ducks.filter((duck) => duck.alive).length < 6) return;
+  state.twoFlocks = true;
+  const living = state.ducks.filter((duck) => duck.alive);
+  living.forEach((duck, index) => { duck.flock = index % 2 ? 'B' : 'A'; });
+}
+
+function addRecruit(state) {
+  if (!state.arcade || state.recruit || state.ducks.filter((duck) => duck.alive).length >= ARCADE_MAX_FLOCK) return;
+  const lane = 38 + ((state.nextDuckId * 47) % 104);
+  state.recruit = { x: WIDTH + 8, y: lane, radius: 18 };
+}
+
+function collectRecruit(state) {
+  if (!state.recruit) return false;
+  const activeHands = [...state.hands.values()].filter((entry) => entry.trackingValid
+    && (entry.gesture === 'FOLLOW' || entry.gesture === 'GRAB'));
+  const nearbyHand = activeHands.find((entry) => distanceBetween(entry.hand, state.recruit) <= 30);
+  const nearbyDuck = state.ducks.find((duck) => duck.alive && distanceBetween(duck, state.recruit) <= 20);
+  if (!nearbyHand && !nearbyDuck) return false;
+
+  const living = state.ducks.filter((duck) => duck.alive);
+  const duck = createDuck(state.nextDuckId, living.length, living.length + 1);
+  duck.x = state.recruit.x;
+  duck.y = state.recruit.y;
+  duck.flock = nearbyHand?.flock ?? nearbyDuck?.flock ?? 'A';
+  state.ducks.push(duck);
+  state.nextDuckId += 1;
+  state.recruit = null;
+  state.stats.recruited += 1;
+  state.score += 250;
+  state.maxFlock = Math.max(state.maxFlock, living.length + 1);
+  state.nextRecruitTime = state.elapsed + RECRUIT_INTERVAL;
+  unlockTwoFlocks(state);
+  return true;
+}
+
 function overlapsBarrier(duck, barrier) {
   const halfWidth = DUCK_WIDTH / 2;
   const halfHeight = DUCK_HEIGHT / 2;
@@ -372,21 +504,49 @@ function updateBurn(duck, touchingFire, dt) {
 }
 
 function advanceArena(state, dt) {
-  const previousTime = (state.scroll - state.stageStartScroll) / SCROLL_SPEED;
-  const scroll = SCROLL_SPEED * dt;
+  const previousTime = state.arcade ? state.elapsed : (state.scroll - state.stageStartScroll) / SCROLL_SPEED;
+  state.elapsed += dt;
+  if (state.arcade) state.score += dt * 10;
+  const attackPhase = state.majorAttackScheduler?.state?.phase;
+  const targetWorldSpeed = attackPhase === 'TELEGRAPH' ? 0.45
+    : attackPhase === 'EXECUTE' ? 0.65
+      : 1;
+  state.worldSpeed += (targetWorldSpeed - state.worldSpeed) * Math.min(1, dt * 5);
+  const scroll = SCROLL_SPEED * dt * state.worldSpeed;
   state.scroll += scroll;
-  const time = previousTime + dt;
+  const time = state.arcade ? state.elapsed : previousTime + dt;
 
   state.stageNotice = Math.max(0, state.stageNotice - dt);
+  if (state.gapFormation) {
+    state.gapFormation.remaining -= dt;
+    if (state.gapFormation.remaining <= 0) state.gapFormation = null;
+  }
   advanceHand(state, dt);
+  for (const entry of state.hands.values()) advanceHand({ hand: entry.hand, handTarget: entry.target }, dt);
+  const primary = state.hands.get('primary') ?? state.hands.values().next().value;
+  if (primary) {
+    state.hand = primary.hand;
+    state.handTarget = primary.target;
+  }
   tickHandActions(state, dt);
   for (const log of state.obstacles) log.x -= scroll;
+
+  if (state.arcade && time >= state.nextRecruitTime) addRecruit(state);
+  if (state.recruit) {
+    state.recruit.x -= scroll * 0.7;
+    collectRecruit(state);
+    if (state.recruit && state.recruit.x < -16) {
+      state.recruit = null;
+      state.nextRecruitTime = time + RECRUIT_INTERVAL * 0.65;
+    }
+  }
 
   for (const duck of state.ducks) {
     if (!duck.alive) continue;
     const heldSlot = state.heldDuckIds.indexOf(duck.id);
     if (heldSlot !== -1) {
-      positionHeldDuck(duck, state.hand, heldSlot);
+      const holdingHand = state.heldByHandId ? state.hands.get(state.heldByHandId)?.hand : state.hand;
+      positionHeldDuck(duck, holdingHand ?? state.hand, heldSlot);
       continue;
     }
 
@@ -396,7 +556,28 @@ function advanceArena(state, dt) {
     duck.x += clamp(duck.cruiseX + Math.sin(time + phase) * 6 - duck.x, -cruiseSpeed, cruiseSpeed);
     duck.y += (Math.sin(time * 1.6 + phase) - Math.sin(previousTime * 1.6 + phase)) * 4;
 
-    if (state.cooldown === 0 && state.heldDuckIds.length === 0) nudgeDuck(duck, state.hand);
+    if (state.gapFormation && state.heldDuckIds.length === 0) {
+      const side = duck.x < state.gapFormation.x ? -1 : 1;
+      duck.x += side * 1.8;
+    } else if (state.cooldown === 0 && state.heldDuckIds.length === 0) {
+      const activeHands = [...state.hands.values()].filter((entry) => entry.trackingValid
+        && (entry.gesture === 'FOLLOW' || entry.gesture === 'REPEL')
+        && (!state.twoFlocks || entry.flock === duck.flock));
+      if (activeHands.length) {
+        const force = activeHands.reduce((sum, entry) => {
+          const vector = steeringVector(duck, entry.hand, entry.gesture);
+          return { x: sum.x + vector.x, y: sum.y + vector.y };
+        }, { x: 0, y: 0 });
+        const magnitude = Math.hypot(force.x, force.y);
+        if (magnitude > 0) {
+          const amount = Math.min(2.4, magnitude);
+          duck.x += force.x / magnitude * amount;
+          duck.y += force.y / magnitude * amount;
+        }
+      } else if (!state.arcade || state.hands.size === 0 || state.hands.has('primary')) {
+        nudgeDuck(duck, state.hand);
+      }
+    }
     duck.x = Math.min(WIDTH - DUCK_WIDTH / 2, duck.x);
     duck.y = clamp(duck.y, DUCK_HEIGHT / 2, HEIGHT - DUCK_HEIGHT / 2);
 

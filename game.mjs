@@ -1,6 +1,6 @@
 import {
-  ACTION_COSTS, canPerformHandAction, createArena, DEATH_LIMIT, HEIGHT, MAX_STAMINA,
-  performHandAction, PIXELS_PER_METER, setHandPosition, STAGE_DISTANCE,
+  ACTION_COSTS, canPerformHandAction, createArena, DEATH_LIMIT, getArenaSummary, HEIGHT, MAX_STAMINA,
+  performHandAction, PIXELS_PER_METER, setGapFormation, setHandPosition, setHandStates, STAGE_DISTANCE,
   STAGE_REINFORCEMENTS, stepArena, WIDTH,
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
@@ -13,6 +13,8 @@ const canvas = document.querySelector('canvas');
 const remaining = document.querySelector('#remaining');
 const losses = document.querySelector('#losses');
 const distance = document.querySelector('#distance');
+const score = document.querySelector('#score');
+const highScore = document.querySelector('#high-score');
 const startScreen = document.querySelector('#start-screen');
 const endScreen = document.querySelector('#end-screen');
 const result = document.querySelector('#result');
@@ -67,6 +69,17 @@ cameraVideo.muted = true;
 cameraVideo.playsInline = true;
 let webcamMode = 'off';
 let cameraRequest = 0;
+const CAMERA_START_TIMEOUT = 12000;
+
+function withTimeout(promise, milliseconds, message) {
+  let timeout;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error(message)), milliseconds);
+    }),
+  ]).finally(() => clearTimeout(timeout));
+}
 
 function moveHand(event) {
   if (!running || arena.gameOver || webcamMode === 'on') return;
@@ -81,10 +94,10 @@ function moveHand(event) {
 canvas.addEventListener('pointermove', moveHand);
 canvas.addEventListener('pointerdown', moveHand);
 
-function triggerAction(action) {
+function triggerAction(action, handId) {
   if (!running || (tutorial && getTutorialLesson(tutorial).action !== action)) return;
   const previousStamina = arena.stamina;
-  if (!performHandAction(arena, action)) return;
+  if (!performHandAction(arena, action, handId)) return;
   if (arena.stamina < previousStamina) staminaWidget.hidden = false;
   if (tutorial) advanceTutorial(tutorial, action);
   renderArena();
@@ -127,7 +140,8 @@ function stopWebcam(message) {
   webcamMode = 'off';
   webcam.stop();
   cameraInput.reset();
-  endGrab('webcam');
+  for (const source of [...grabInputs]) if (source.startsWith('webcam')) endGrab(source);
+  setHandStates(arena, []);
   updateWebcamControls(message);
 }
 
@@ -141,7 +155,11 @@ webcamToggle.addEventListener('click', async () => {
   webcamMode = 'starting';
   updateWebcamControls('Loading hand tracking…');
   try {
-    await webcam.init({ video: cameraVideo });
+    await withTimeout(
+      webcam.init({ video: cameraVideo }),
+      CAMERA_START_TIMEOUT,
+      'Hand tracking download timed out. Check content blockers or your connection, then try again.',
+    );
     if (request !== cameraRequest) return;
     await webcam.start();
     if (request !== cameraRequest) return;
@@ -167,12 +185,34 @@ webcam.on('stateChange', (state) => {
   }
   if (!running || arena.gameOver || controlsGuide.open || state.status !== 'running') return;
 
-  const { hand, changed, actions } = cameraInput.update(state);
-  if (changed || hand?.gesture !== 'GRAB') endGrab('webcam');
-  if (!hand) return;
-  setHandPosition(arena, hand.target.x, hand.target.y);
-  if (hand.gesture === 'GRAB') startGrab('webcam');
-  for (const action of actions) triggerAction(action);
+  const { hand, hands, actionCommands } = cameraInput.update(state);
+  if (tutorial) {
+    if (hand) setHandPosition(arena, hand.target.x, hand.target.y);
+  } else {
+    setHandStates(arena, hands);
+  }
+  const visibleGrabSources = new Set(hands.filter(({ gesture }) => gesture === 'GRAB')
+    .map(({ handId }) => `webcam:${handId}`));
+  for (const source of [...grabInputs]) {
+    if (source.startsWith('webcam:') && !visibleGrabSources.has(source)) endGrab(source);
+  }
+  for (const source of visibleGrabSources) {
+    if (!grabInputs.has(source)) {
+      const handId = source.slice('webcam:'.length);
+      grabInputs.add(source);
+      if (arena.heldDuckIds.length === 0) triggerAction('grab', handId);
+    }
+  }
+  for (const command of actionCommands) {
+    if (command.action === 'defenseSlam') {
+      const participants = hands.filter(({ handId }) => command.handIds?.includes(handId));
+      if (participants.length === 2) setGapFormation(arena, {
+        x: (participants[0].target.x + participants[1].target.x) / 2,
+        y: (participants[0].target.y + participants[1].target.y) / 2,
+      });
+    }
+    triggerAction(command.action, command.handId ?? command.handIds?.[0]);
+  }
 });
 
 for (const button of actionButtons) {
@@ -261,7 +301,7 @@ function startRun() {
   tutorialSeen = true;
   start.textContent = 'Start run';
   tutorialOption.textContent = 'Replay tutorial';
-  loadArena(createArena(selectedZone(), { progression: true }));
+  loadArena(createArena(selectedZone(), { progression: true, arcade: true }));
   enterPlay();
 }
 
@@ -330,6 +370,7 @@ controlsGuide.addEventListener('close', () => {
 });
 
 function updateStatus() {
+  const summary = getArenaSummary(arena);
   const label = zoneLabels[arena.zone];
   if (zoneName.textContent !== label) {
     zoneName.textContent = label;
@@ -342,7 +383,7 @@ function updateStatus() {
     notice = event.phase === 'impact' ? 'Meteor impact' : 'Meteor incoming';
     noticeKind = 'meteor';
   } else if (arena.stageNotice > 0) {
-    notice = `Stage ${arena.stage} · +${STAGE_REINFORCEMENTS} ducks`;
+    notice = arena.arcade ? `Stage ${arena.stage} · threats rising` : `Stage ${arena.stage} · +${STAGE_REINFORCEMENTS} ducks`;
     noticeKind = 'stage';
   } else if (event) {
     notice = event.phase === 'strike' ? 'Lightning strike' : 'Lightning incoming';
@@ -358,9 +399,12 @@ function updateStatus() {
     const progress = `Stage ${arena.stage} · ${stageMeters}/${STAGE_DISTANCE} m`;
     if (stageProgress.textContent !== progress) stageProgress.textContent = progress;
   }
-  remaining.textContent = arena.ducks.filter(({ alive }) => alive).length;
-  losses.textContent = `${arena.deaths} / ${DEATH_LIMIT}`;
-  distance.textContent = `${Math.floor(arena.scroll / PIXELS_PER_METER)} m`;
+  remaining.textContent = arena.twoFlocks ? `${summary.flockA} + ${summary.flockB}` : String(summary.flock);
+  losses.textContent = arena.arcade ? String(summary.losses) : `${summary.losses} / ${DEATH_LIMIT}`;
+  distance.textContent = `${summary.distance} m`;
+  if (score) score.textContent = summary.score.toLocaleString();
+  const storedHighScore = Number(localStorage.getItem('motherduck-high-score') ?? 0);
+  if (highScore) highScore.textContent = Math.max(storedHighScore, summary.score).toLocaleString();
   const stamina = String(Math.floor(arena.stamina));
   const held = arena.heldDuckIds.length;
   const cooldown = Math.ceil(arena.cooldown);
@@ -413,8 +457,11 @@ function frame(now) {
     updateStatus();
 
     if (arena.gameOver) {
+      const finalScore = Math.floor(arena.score ?? 0);
+      const previousHighScore = Number(localStorage.getItem('motherduck-high-score') ?? 0);
+      if (finalScore > previousHighScore) localStorage.setItem('motherduck-high-score', String(finalScore));
       updateMusic();
-      result.textContent = `The flock made it ${distance.textContent}.`;
+      result.textContent = `The flock made it ${distance.textContent} and scored ${finalScore.toLocaleString()} points.`;
       runTools.hidden = true;
       eventNotice.hidden = true;
       staminaWidget.hidden = true;

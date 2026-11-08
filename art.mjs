@@ -1,6 +1,6 @@
 import {
   ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, alligatorJaw, countExposedDucks,
-  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE, MAX_STAMINA
+  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, foxAttackCorridor, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE, MAX_STAMINA
 } from './arena.mjs';
 
 const duckPixels = [
@@ -183,6 +183,21 @@ export async function createRenderer(context) {
     if (inRiver) drawRiver(context, state.scroll);
     else if (burned) drawBurnedForest(context, state.scroll, flames);
     else drawForest(context, state.scroll);
+    for (const enemy of state.enemies) {
+      if (enemy.hp > 0 && enemy.attackPhase === 'TELEGRAPH' && enemy.majorAttack) {
+        const corridor = foxAttackCorridor(enemy, WIDTH);
+        const y = Math.round(corridor.y + corridor.height / 2);
+        const progress = enemy.telegraphProgress ?? 0;
+        const pulse = 0.14 + progress * 0.22;
+        context.fillStyle = `rgba(196,83,68,${pulse})`;
+        context.fillRect(corridor.x, corridor.y, corridor.width, corridor.height);
+        rect(context, '#ffc678', 6, y - 1, Math.max(6, Math.round((WIDTH - 12) * progress)), 2);
+        rect(context, '#f4dfb2', Math.round(enemy.x) - 4, y - 18, 8, 4);
+      }
+      if (enemy.hp > 0 && enemy.type === 'blueJay' && enemy.phase === 'windup' && enemy.targetX !== undefined) {
+        drawWarning(context, { x: enemy.targetX - 11, y: enemy.targetY - 9, width: 22, height: 18 }, '#ffc678');
+      }
+    }
     if (tutorialTarget) {
       const { x, y } = tutorialTarget;
       drawWarning(context, { x: x - 15, y: y - 13, width: 30, height: 26 }, '#ffe1a8');
@@ -199,6 +214,10 @@ export async function createRenderer(context) {
       else if (enemySprites[enemy.type]) drawEnemy(context, enemy, enemySprites[enemy.type], inRiver);
     }
     const heldDucks = [];
+    if (state.recruit) {
+      drawWarning(context, { x: state.recruit.x - 11, y: state.recruit.y - 11, width: 22, height: 22 }, '#d4f0df');
+      context.drawImage(duck, Math.round(state.recruit.x - DUCK_WIDTH / 2), Math.round(state.recruit.y - DUCK_HEIGHT / 2));
+    }
     for (const duckling of state.ducks) {
       if (!duckling.alive) continue;
       if (state.heldDuckIds.includes(duckling.id)) {
@@ -209,24 +228,29 @@ export async function createRenderer(context) {
       const shadow = inRiver ? '#b1cfc5' : burned ? '#5b4a57' : '#759c7b';
       rect(context, shadow, Math.round(x - 5), Math.round(y + 7), 10, 2);
       context.drawImage(duck, Math.round(x - DUCK_WIDTH / 2), Math.round(y - DUCK_HEIGHT / 2));
+      if (state.twoFlocks) rect(context, duckling.flock === 'B' ? '#ffb265' : '#91cbd0', Math.round(x - 4), Math.round(y + 9), 8, 2);
       drawDuckBurn(context, duckling, state.scroll, flames);
     }
     if (state.actionEffect) drawActionEffect(context, state.actionEffect);
-    let handImg = hand;
-    if (state.cooldown > 0) {
-      handImg = handSleep;
-    } else if (state.heldDuckIds.length > 0) {
-      handImg = handGrab;
-    } else if (state.actionEffect) {
-      handImg = handHit;
-    }
-    if (handImg != null) {
+    const trackedHands = state.hands instanceof Map
+      ? [...state.hands.values()].filter(({ trackingValid }) => trackingValid)
+      : [];
+    const visibleHands = trackedHands.length ? trackedHands : [{ hand: state.hand, gesture: 'NEUTRAL', flock: 'A' }];
+    for (const entry of visibleHands) {
+      let handImg = hand;
+      if (state.cooldown > 0) handImg = handSleep;
+      else if (entry.gesture === 'GRAB' || (state.heldDuckIds.length > 0 && state.heldByHandId === entry.id)) handImg = handGrab;
+      else if (entry.gesture === 'REPEL' || state.actionEffect) handImg = handHit;
+      const point = entry.hand;
       context.drawImage(
         handImg,
-        Math.round(state.hand.x - HAND_WIDTH / 2 * HAND_SCALE),
-        Math.round(state.hand.y - HAND_HEIGHT / 2 * HAND_SCALE),
+        Math.round(point.x - HAND_WIDTH / 2 * HAND_SCALE),
+        Math.round(point.y - HAND_HEIGHT / 2 * HAND_SCALE),
         HAND_WIDTH * HAND_SCALE, HAND_HEIGHT * HAND_SCALE,
       );
+      if (state.twoFlocks && entry.trackingValid) {
+        rect(context, entry.flock === 'B' ? '#ffb265' : '#91cbd0', Math.round(point.x - 7), Math.round(point.y - 25), 14, 2);
+      }
     }
     for (const duckling of heldDucks) {
       const x = Math.round(duckling.x - DUCK_WIDTH / 2);
