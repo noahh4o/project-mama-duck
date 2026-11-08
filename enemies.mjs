@@ -19,10 +19,16 @@ const WINDUP_SECONDS = 0.85;
 const SWOOP_SECONDS = 1.15;
 const HIT_PAUSE = 1.15;
 const RIVER_JAW_LANES = [105, 69, 133];
+const COMMITTED_ATTACKS = {
+  fox: { approachX: 226, approachSpeed: 28, corridorHeight: 26, telegraphMs: 1500, commitMs: 180, executeMs: 650, recoverMs: 700 },
+  raccoon: { approachX: 238, approachSpeed: 34, corridorHeight: 18, telegraphMs: 1050, commitMs: 160, executeMs: 850, recoverMs: 600 },
+  goose: { approachX: 230, approachSpeed: 30, corridorHeight: 22, telegraphMs: 1350, commitMs: 180, executeMs: 720, recoverMs: 650 },
+};
 
 export function createAttackScheduler(options = {}) {
   const defaults = {
     telegraphMs: options.telegraphMs ?? 1700,
+    commitMs: options.commitMs ?? 180,
     executeMs: options.executeMs ?? 650,
     recoverMs: options.recoverMs ?? 800,
     spacingMs: options.spacingMs ?? 900,
@@ -45,6 +51,9 @@ export function createAttackScheduler(options = {}) {
     update(now) {
       if (!active) return null;
       if (active.phase === 'TELEGRAPH' && now - active.startedAt >= active.timing.telegraphMs) {
+        active.phase = 'COMMIT';
+        active.commitAt = now;
+      } else if (active.phase === 'COMMIT' && now - active.commitAt >= active.timing.commitMs) {
         active.phase = 'EXECUTE';
         active.executeAt = now;
       } else if (active.phase === 'EXECUTE' && now - active.executeAt >= active.timing.executeMs) {
@@ -76,10 +85,13 @@ export function alligatorJaw(enemy, exposedDuckCount) {
   };
 }
 
-export function foxAttackCorridor(enemy, width = 320) {
+export function enemyAttackCorridor(enemy, width = 320) {
   if (!enemy?.majorAttack) return null;
-  return { x: 0, y: enemy.majorAttack.laneY - 13, width, height: 26 };
+  const height = enemy.majorAttack.corridorHeight ?? 26;
+  return { x: 0, y: enemy.majorAttack.laneY - height / 2, width, height };
 }
+
+export const foxAttackCorridor = enemyAttackCorridor;
 
 export function startEncounters(state) {
   state.encounterIndex = 0;
@@ -98,6 +110,7 @@ function spawnEncounter(state, time) {
   const cycle = Math.floor(state.encounterIndex / encounters.length);
   const maxHp = ENEMY_HEALTH[type];
   const enemy = { id: state.nextEnemyId++, type, x, y, hp: maxHp, maxHp, facing: -1, hitPause: 0 };
+  if (state.arcade && COMMITTED_ATTACKS[type]) enemy.attackPhase = 'APPROACH';
   if (type === 'alligator') enemy.y = RIVER_JAW_LANES[cycle % RIVER_JAW_LANES.length];
   if (type === 'raccoon') Object.assign(enemy, { lane: y, age: 0 });
   if (type === 'blueJay') Object.assign(enemy, { phase: 'windup', phaseTime: 0, originX: x, originY: y });
@@ -186,14 +199,44 @@ function touchDuck(enemy, duck, jaw, duckWidth, duckHeight) {
       && duck.y + duckHeight / 2 > jaw.y && duck.y - duckHeight / 2 < jaw.y + jaw.height;
   }
 
-  if (enemy.type === 'fox' && enemy.majorAttack) {
-    const corridor = foxAttackCorridor(enemy);
+  if (enemy.majorAttack) {
+    const corridor = enemyAttackCorridor(enemy);
     const insideLane = duck.y + duckHeight / 2 > corridor.y
       && duck.y - duckHeight / 2 < corridor.y + corridor.height;
     return insideLane && Math.abs(duck.x - enemy.x) < ENEMY_RADIUS.fox + duckWidth / 2;
   }
 
   return Math.hypot(duck.x - enemy.x, duck.y - enemy.y) < ENEMY_RADIUS[enemy.type] + duckWidth / 3;
+}
+
+function approachCommittedAttack(enemy, ducks, dt, scroll) {
+  const spec = COMMITTED_ATTACKS[enemy.type];
+  enemy.x -= spec.approachSpeed * dt + scroll * 0.15;
+  if (enemy.type === 'raccoon') {
+    enemy.age += dt;
+    enemy.y = enemy.lane + Math.asin(Math.sin(enemy.age * 5.5)) * 12;
+  }
+  enemy.x = Math.max(spec.approachX, enemy.x);
+  if (enemy.x > spec.approachX) return null;
+  return nearestExposedDuck(ducks, enemy);
+}
+
+function requestCommittedAttack(state, enemy, target, now) {
+  if (!target) return false;
+  const spec = COMMITTED_ATTACKS[enemy.type];
+  const telegraphMs = Math.max(850, spec.telegraphMs - (state.stage - 1) * 70);
+  if (!state.majorAttackScheduler.request(enemy, now, target.y, { ...spec, telegraphMs })) return false;
+  enemy.majorAttack = {
+    origin: { x: enemy.x, y: target.y },
+    destination: { x: 20, y: target.y },
+    laneY: target.y,
+    corridorHeight: spec.corridorHeight,
+    targetDuckId: target.id,
+    hitDuckIds: new Set(),
+  };
+  enemy.y = target.y;
+  enemy.attackPhase = 'TELEGRAPH';
+  return true;
 }
 
 export function advanceEnemies(state, { dt, scroll, time, duckWidth, duckHeight, width }, hitDuck) {
@@ -205,48 +248,45 @@ export function advanceEnemies(state, { dt, scroll, time, duckWidth, duckHeight,
   for (const enemy of state.enemies) {
     if (enemy.hp <= 0) continue;
 
-    if (state.arcade && enemy.type === 'fox' && !enemy.majorAttack && enemy.x < 220) {
-      const target = nearestExposedDuck(state.ducks, enemy);
-      const telegraphMs = Math.max(950, 1700 - (state.stage - 1) * 80);
-      if (target && state.majorAttackScheduler.request(enemy, now, target.y, { telegraphMs })) {
-        enemy.majorAttack = {
-          origin: { x: enemy.x, y: target.y },
-          destination: { x: -40, y: target.y },
-          laneY: target.y,
-          hitDuckIds: new Set(),
-        };
-        enemy.attackPhase = 'TELEGRAPH';
-      }
+    const committedSpec = state.arcade ? COMMITTED_ATTACKS[enemy.type] : null;
+    if (committedSpec && enemy.attackPhase === 'APPROACH') {
+      const target = approachCommittedAttack(enemy, state.ducks, dt, scroll);
+      if (target) requestCommittedAttack(state, enemy, target, now);
     }
 
     const scheduled = state.arcade ? state.majorAttackScheduler?.state : null;
     const ownsScheduledAttack = enemy.majorAttack && scheduled?.enemyId === enemy.id;
     if (ownsScheduledAttack) {
-      enemy.attackPhase = scheduledPhase?.phase ?? enemy.attackPhase;
+      const current = scheduledPhase?.enemyId === enemy.id ? scheduledPhase : scheduled;
+      enemy.attackPhase = current?.phase ?? enemy.attackPhase;
       enemy.telegraphProgress = enemy.attackPhase === 'TELEGRAPH'
         ? Math.min(1, (now - scheduled.startedAt) / scheduled.timing.telegraphMs)
         : 1;
       if (enemy.attackPhase === 'EXECUTE') {
-        const progress = Math.min(1, (now - scheduledPhase.executeAt) / scheduled.timing.executeMs);
+        const progress = Math.min(1, (now - current.executeAt) / current.timing.executeMs);
         enemy.x = enemy.majorAttack.origin.x
           + (enemy.majorAttack.destination.x - enemy.majorAttack.origin.x) * progress;
         enemy.y = enemy.majorAttack.laneY;
       }
       if (enemy.attackPhase === 'COMPLETE') {
         state.majorAttackScheduler.clear(enemy.id);
-        enemy.majorAttack = null;
-        enemy.attackPhase = 'IDLE';
-        enemy.x = -48;
+        enemy.attackPhase = 'EXIT';
       }
     }
 
-    if (!ownsScheduledAttack || !['TELEGRAPH', 'EXECUTE', 'RECOVER'].includes(enemy.attackPhase)) {
+    const aerialWaitingForMajorAttack = state.arcade && enemy.type === 'blueJay'
+      && enemy.phase === 'windup' && Boolean(state.majorAttackScheduler?.state);
+    if (committedSpec && enemy.attackPhase === 'EXIT') {
+      enemy.x -= 72 * dt;
+    } else if (!aerialWaitingForMajorAttack && (!committedSpec
+      || (!ownsScheduledAttack && !['APPROACH', 'TELEGRAPH', 'COMMIT', 'EXECUTE', 'RECOVER'].includes(enemy.attackPhase)))) {
       moveEnemy(enemy, state.ducks, dt, scroll);
     }
     enemy.hitPause = Math.max(0, enemy.hitPause - dt);
     if (enemy.hitPause > 0
       || (enemy.type === 'blueJay' && enemy.phase !== 'swoop')
-      || (state.arcade && enemy.type === 'fox' && enemy.attackPhase !== 'EXECUTE')) continue;
+      || (state.arcade && enemy.type === 'alligator' && Boolean(state.majorAttackScheduler?.state))
+      || (committedSpec && enemy.attackPhase !== 'EXECUTE')) continue;
 
     const jaw = enemy.type === 'alligator' ? alligatorJaw(enemy, exposedCount) : null;
     for (const duck of state.ducks) {

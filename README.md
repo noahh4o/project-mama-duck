@@ -13,13 +13,13 @@ npm run dev
 
 Open [the arena](http://127.0.0.1:8000/), pick **Forest** or **River**, then start or skip the tutorial. Use the pointer or arrow keys to nudge ducks away from enemies. Select **Zones** to return to the picker.
 
-For camera input, select **Webcam** on the title screen and allow camera access. A spread palm attracts ducks (**FOLLOW**) and a fist pushes them away (**REPEL**). Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for defense slam. Once the flock reaches six ducks, left and right hands independently steer the two color-marked flocks. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe; if a content blocker prevents the download, disable it for localhost or continue with mouse and keyboard.
+For camera input, select **Webcam** on the title screen and allow camera access. A spread palm attracts ducks (**FOLLOW**) and a fist pushes them away (**REPEL**). Hold a thumb–index pinch to grab, make horns for attack slam, or bring two fists together for a temporary defensive gap. One visible hand controls the whole flock; two stable hands automatically divide the existing ducks into two color-marked groups, and removing a hand reunites them after a short tracking grace period. The action buttons and keyboard shortcuts remain available. Select **Use mouse** to stop camera capture. The first camera start needs internet access to load MediaPipe; if a content blocker prevents the download, disable it for localhost or continue with mouse and keyboard.
 
 The defaults work on a fresh clone. To change the server host or port, copy `.env.example` to `.env` and edit it. Use `cp .env.example .env` on macOS or Linux, or `Copy-Item .env.example .env` in PowerShell. Put shared defaults in `.env.example` and keep personal settings in the ignored `.env`.
 
 The dev server serves the browser files listed in `scripts/dev.mjs`. Add any new browser modules to that list when introducing them.
 
-The live run is an endless arcade mode. It starts with three ducks, recruits stray ducklings, tracks score and a browser-local best score, and unlocks two-flock control at six ducks. Every 70 m, the run picks a new Forest or River stage while surviving ducks, burn damage, distance, and losses carry forward. The run ends when no living ducks remain.
+The live run is an endless arcade mode. It starts with three ducks, recruits stray ducklings, and tracks score plus a browser-local best score. Ground predators approach, display a committed corridor, execute one non-homing charge, recover, and leave; the Blue Jay locks a marked dive target. Every 70 m, the run picks a new Forest or River stage while surviving ducks, burn damage, distance, and losses carry forward. The run ends when no living ducks remain.
 
 ## Team workflow
 

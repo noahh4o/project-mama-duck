@@ -24,6 +24,9 @@ const FLOCK_SIZE = 14;
 const ARCADE_STARTING_FLOCK = 3;
 const ARCADE_MAX_FLOCK = 24;
 const RECRUIT_INTERVAL = 9;
+const TWO_HAND_ACTIVATION_SECONDS = 0.12;
+const ONE_HAND_MERGE_SECONDS = 0.45;
+const HAND_TRACKING_GRACE_SECONDS = 0.55;
 const STAGE_SCROLL = STAGE_DISTANCE * PIXELS_PER_METER;
 const STAGE_NOTICE_SECONDS = 2;
 const HAND_SPEED = 720;
@@ -147,6 +150,7 @@ export function createArena(zone = 'practice', { seed, progression = false, tuto
     arcade: Boolean(arcade && live), score: 0, highScore: 0, maxFlock: initialFlock,
     stats: { recruited: 0, dodges: 0, rescues: 0 }, recruit: null,
     nextRecruitTime: arcade && live ? 5 : RECRUIT_INTERVAL, twoFlocks: false,
+    handMode: 'one', pendingHandMode: null, pendingHandModeSince: 0,
   };
   if (live) {
     resetLiveZone(state, seed ?? progressionSeed ?? undefined);
@@ -168,7 +172,7 @@ export function setHandPosition(state, x, y) {
 }
 
 function assignHandFlocks(state, hands) {
-  if (!state.twoFlocks) return new Map(hands.map((hand) => [hand.handId, 'A']));
+  if (state.handMode !== 'two') return new Map(hands.map((hand) => [hand.handId, 'A']));
   const next = new Map();
   const claimed = new Set();
   for (const hand of hands) {
@@ -184,10 +188,42 @@ function assignHandFlocks(state, hands) {
   return next;
 }
 
+function setFlockMode(state, mode, hands) {
+  state.handMode = mode;
+  state.twoFlocks = mode === 'two';
+  state.pendingHandMode = null;
+  const living = state.ducks.filter((duck) => duck.alive).sort((first, second) => first.id - second.id);
+  if (mode === 'two' && living.length > 1) {
+    const leftCount = Math.floor(living.length / 2);
+    living.forEach((duck, index) => { duck.flock = index < leftCount ? 'A' : 'B'; });
+  } else {
+    living.forEach((duck) => { duck.flock = 'A'; });
+  }
+  state.handOwners = assignHandFlocks(state, hands);
+}
+
+function updateHandMode(state, valid) {
+  if (!state.arcade) return;
+  const desired = valid.length >= 2 && state.ducks.filter((duck) => duck.alive).length > 1 ? 'two' : 'one';
+  if (desired === state.handMode) {
+    state.pendingHandMode = null;
+    return;
+  }
+  if (state.pendingHandMode !== desired) {
+    state.pendingHandMode = desired;
+    state.pendingHandModeSince = state.elapsed;
+    return;
+  }
+  const delay = desired === 'two' ? TWO_HAND_ACTIVATION_SECONDS : ONE_HAND_MERGE_SECONDS;
+  if (state.elapsed - state.pendingHandModeSince >= delay) setFlockMode(state, desired, valid);
+}
+
 export function setHandStates(state, hands = []) {
   if (state.gameOver || !state.hands) return;
   const valid = hands.filter((input) => input?.handId && input.trackingValid
     && Number.isFinite(input.target?.x) && Number.isFinite(input.target?.y));
+  updateHandMode(state, valid);
+  const rememberedOwners = new Map(state.handOwners);
   const owners = assignHandFlocks(state, valid);
   const next = new Map();
   for (const input of valid) {
@@ -201,10 +237,19 @@ export function setHandStates(state, hands = []) {
     previous.gesture = input.gesture ?? 'NEUTRAL';
     previous.handedness = input.handedness;
     previous.trackingValid = true;
+    previous.lastSeenAt = state.elapsed;
     previous.flock = owners.get(input.handId) ?? 'A';
     next.set(input.handId, previous);
   }
-  state.handOwners = owners;
+  for (const [id, previous] of state.hands) {
+    if (next.has(id) || id === 'primary') continue;
+    if (state.elapsed - (previous.lastSeenAt ?? state.elapsed) > HAND_TRACKING_GRACE_SECONDS) continue;
+    next.set(id, { ...previous, trackingValid: false });
+    if (state.handMode === 'two' && previous.flock) rememberedOwners.set(id, previous.flock);
+  }
+  state.handOwners = state.handMode === 'two'
+    ? new Map([...rememberedOwners, ...owners])
+    : owners;
   state.hands = next.size ? next : new Map();
 }
 
@@ -263,9 +308,12 @@ function positionHeldDuck(duck, hand, slot) {
   duck.y = clamp(hand.y + offsetY, halfHeight, HEIGHT - halfHeight);
 }
 
-function grabDucks(state, radius) {
+function grabDucks(state, radius, handId) {
+  const assignedFlock = state.handMode === 'two' ? state.hands.get(handId)?.flock : null;
   const nearby = state.ducks
-    .filter((duck) => duck.alive && !duck.protected && distanceBetween(duck, state.hand) <= radius)
+    .filter((duck) => duck.alive && !duck.protected
+      && (!assignedFlock || duck.flock === assignedFlock)
+      && distanceBetween(duck, state.hand) <= radius)
     .sort((first, second) => distanceBetween(first, state.hand) - distanceBetween(second, state.hand))
     .slice(0, HELD_X_OFFSETS.length);
   if (nearby.length === 0) return false;
@@ -352,7 +400,7 @@ export function performHandAction(state, action, handId) {
   if (actionHand) state.hand = actionHand;
 
   const radius = ACTION_RADIUS[action];
-  if (action === 'grab' && !grabDucks(state, radius)) {
+  if (action === 'grab' && !grabDucks(state, radius, handId)) {
     state.hand = previousHand;
     return false;
   }
@@ -444,13 +492,6 @@ function steeringVector(duck, hand, gesture) {
   return { x: dx / distance * strength, y: dy / distance * strength };
 }
 
-function unlockTwoFlocks(state) {
-  if (state.twoFlocks || state.ducks.filter((duck) => duck.alive).length < 6) return;
-  state.twoFlocks = true;
-  const living = state.ducks.filter((duck) => duck.alive);
-  living.forEach((duck, index) => { duck.flock = index % 2 ? 'B' : 'A'; });
-}
-
 function addRecruit(state) {
   if (!state.arcade || state.recruit || state.ducks.filter((duck) => duck.alive).length >= ARCADE_MAX_FLOCK) return;
   const lane = 38 + ((state.nextDuckId * 47) % 104);
@@ -469,7 +510,13 @@ function collectRecruit(state) {
   const duck = createDuck(state.nextDuckId, living.length, living.length + 1);
   duck.x = state.recruit.x;
   duck.y = state.recruit.y;
-  duck.flock = nearbyHand?.flock ?? nearbyDuck?.flock ?? 'A';
+  if (state.handMode === 'two') {
+    const counts = living.reduce((result, candidate) => {
+      result[candidate.flock === 'B' ? 'B' : 'A'] += 1;
+      return result;
+    }, { A: 0, B: 0 });
+    duck.flock = nearbyHand?.flock ?? nearbyDuck?.flock ?? (counts.A <= counts.B ? 'A' : 'B');
+  } else duck.flock = 'A';
   state.ducks.push(duck);
   state.nextDuckId += 1;
   state.recruit = null;
@@ -477,7 +524,6 @@ function collectRecruit(state) {
   state.score += 250;
   state.maxFlock = Math.max(state.maxFlock, living.length + 1);
   state.nextRecruitTime = state.elapsed + RECRUIT_INTERVAL;
-  unlockTwoFlocks(state);
   return true;
 }
 
@@ -508,7 +554,7 @@ function advanceArena(state, dt) {
   state.elapsed += dt;
   if (state.arcade) state.score += dt * 10;
   const attackPhase = state.majorAttackScheduler?.state?.phase;
-  const targetWorldSpeed = attackPhase === 'TELEGRAPH' ? 0.45
+  const targetWorldSpeed = attackPhase === 'TELEGRAPH' || attackPhase === 'COMMIT' ? 0.45
     : attackPhase === 'EXECUTE' ? 0.65
       : 1;
   state.worldSpeed += (targetWorldSpeed - state.worldSpeed) * Math.min(1, dt * 5);

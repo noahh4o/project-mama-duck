@@ -184,7 +184,7 @@ export async function createRenderer(context) {
     else if (burned) drawBurnedForest(context, state.scroll, flames);
     else drawForest(context, state.scroll);
     for (const enemy of state.enemies) {
-      if (enemy.hp > 0 && enemy.attackPhase === 'TELEGRAPH' && enemy.majorAttack) {
+      if (enemy.hp > 0 && ['TELEGRAPH', 'COMMIT'].includes(enemy.attackPhase) && enemy.majorAttack) {
         const corridor = foxAttackCorridor(enemy, WIDTH);
         const y = Math.round(corridor.y + corridor.height / 2);
         const progress = enemy.telegraphProgress ?? 0;
@@ -193,6 +193,10 @@ export async function createRenderer(context) {
         context.fillRect(corridor.x, corridor.y, corridor.width, corridor.height);
         rect(context, '#ffc678', 6, y - 1, Math.max(6, Math.round((WIDTH - 12) * progress)), 2);
         rect(context, '#f4dfb2', Math.round(enemy.x) - 4, y - 18, 8, 4);
+      }
+      if (enemy.hp > 0 && enemy.attackPhase === 'RECOVER') {
+        rect(context, '#91cbd0', Math.round(enemy.x) - 7, Math.round(enemy.y) - 18, 4, 2);
+        rect(context, '#91cbd0', Math.round(enemy.x) + 3, Math.round(enemy.y) - 21, 4, 2);
       }
       if (enemy.hp > 0 && enemy.type === 'blueJay' && enemy.phase === 'windup' && enemy.targetX !== undefined) {
         drawWarning(context, { x: enemy.targetX - 11, y: enemy.targetY - 9, width: 22, height: 18 }, '#ffc678');
