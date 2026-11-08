@@ -16,6 +16,8 @@ export const PIXELS_PER_METER = 8;
 export const SCROLL_SPEED = 44;
 export const STAGE_DISTANCE = 70;
 export const STAGE_REINFORCEMENTS = 2;
+export const PASSIVE_SCORE_PER_DUCK = 10;
+export const DUCK_SOFT_SPACING = 11;
 export const ACTION_COSTS = Object.freeze({
   punch: 18, attackSlam: 40, defenseSlam: 30, grab: 24, release: 0,
 });
@@ -59,6 +61,7 @@ const REGEN_DELAY = 0.75;
 const REGEN_PER_SECOND = 32;
 const DEFENSE_THREAT_RANGE = 36;
 const DEFENSE_CLEARANCE = 6;
+const MAX_SEPARATION_SPEED = 28;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -147,8 +150,11 @@ export function createArena(zone = 'practice', { seed, progression = false, tuto
     enemies: [],
     actionEffect: null,
     eventSchedule: null, meteor: null, lightning: null,
-    arcade: Boolean(arcade && live), score: 0, highScore: 0, maxFlock: initialFlock,
+    arcade: Boolean(arcade && live), paused: false, score: 0,
+    passiveScoreRate: arcade && live ? initialFlock * PASSIVE_SCORE_PER_DUCK : 0,
+    highScore: 0, maxFlock: initialFlock,
     stats: { recruited: 0, dodges: 0, rescues: 0 }, recruit: null,
+    recruitEffect: null,
     nextRecruitTime: arcade && live ? 5 : RECRUIT_INTERVAL, twoFlocks: false,
     handMode: 'one', pendingHandMode: null, pendingHandModeSince: 0,
   };
@@ -259,6 +265,17 @@ export function setGapFormation(state, center) {
     : null;
 }
 
+export function setArenaPaused(state, paused) {
+  state.paused = Boolean(paused);
+}
+
+export function getPassiveScoreRate(state) {
+  if (!state.arcade || state.gameOver) return 0;
+  const living = state.ducks.reduce((count, duck) => count + Number(duck.alive), 0);
+  const difficultyMultiplier = 1 + Math.max(0, state.stage - 1) * 0.1;
+  return PASSIVE_SCORE_PER_DUCK * living * difficultyMultiplier;
+}
+
 export function getArenaSummary(state) {
   const living = state.ducks.filter((duck) => duck.alive);
   return {
@@ -268,6 +285,7 @@ export function getArenaSummary(state) {
     losses: state.deaths,
     distance: Math.floor(state.scroll / PIXELS_PER_METER),
     score: Math.floor(state.score ?? 0),
+    passiveRate: Math.round(getPassiveScoreRate(state)),
     stage: state.stage,
     gameOver: state.gameOver,
   };
@@ -522,9 +540,68 @@ function collectRecruit(state) {
   state.recruit = null;
   state.stats.recruited += 1;
   state.score += 250;
+  state.recruitEffect = {
+    x: duck.x,
+    y: duck.y,
+    flock: duck.flock,
+    rateDelta: Math.round(PASSIVE_SCORE_PER_DUCK * (1 + Math.max(0, state.stage - 1) * 0.1)),
+    remaining: 0.7,
+  };
   state.maxFlock = Math.max(state.maxFlock, living.length + 1);
   state.nextRecruitTime = state.elapsed + RECRUIT_INTERVAL;
   return true;
+}
+
+export function applyDuckSeparation(state, dt) {
+  if (!Number.isFinite(dt) || dt <= 0) return;
+  const living = state.ducks.filter((duck) => duck.alive);
+  if (living.length < 2) return;
+  const held = new Set(state.heldDuckIds);
+  const offsets = new Map(living.map((duck) => [duck.id, { x: 0, y: 0 }]));
+
+  for (let firstIndex = 0; firstIndex < living.length - 1; firstIndex += 1) {
+    const first = living[firstIndex];
+    for (let secondIndex = firstIndex + 1; secondIndex < living.length; secondIndex += 1) {
+      const second = living[secondIndex];
+      let dx = second.x - first.x;
+      let dy = second.y - first.y;
+      let distance = Math.hypot(dx, dy);
+      if (distance >= DUCK_SOFT_SPACING) continue;
+      if (distance < 1e-6) {
+        const angle = ((first.id * 37 + second.id * 17) % 16) / 16 * Math.PI * 2;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        distance = 1;
+      }
+      const overlap = 1 - distance / DUCK_SOFT_SPACING;
+      const amount = MAX_SEPARATION_SPEED * overlap * dt;
+      const directionX = dx / distance;
+      const directionY = dy / distance;
+      const firstHeld = held.has(first.id);
+      const secondHeld = held.has(second.id);
+      if (!firstHeld) {
+        const share = secondHeld ? amount : amount / 2;
+        offsets.get(first.id).x -= directionX * share;
+        offsets.get(first.id).y -= directionY * share;
+      }
+      if (!secondHeld) {
+        const share = firstHeld ? amount : amount / 2;
+        offsets.get(second.id).x += directionX * share;
+        offsets.get(second.id).y += directionY * share;
+      }
+    }
+  }
+
+  const maximumStep = MAX_SEPARATION_SPEED * dt;
+  for (const duck of living) {
+    if (held.has(duck.id)) continue;
+    const offset = offsets.get(duck.id);
+    const magnitude = Math.hypot(offset.x, offset.y);
+    const scale = magnitude > maximumStep ? maximumStep / magnitude : 1;
+    const minimumX = Math.min(duck.x, DUCK_WIDTH / 2);
+    duck.x = clamp(duck.x + offset.x * scale, minimumX, WIDTH - DUCK_WIDTH / 2);
+    duck.y = clamp(duck.y + offset.y * scale, DUCK_HEIGHT / 2, HEIGHT - DUCK_HEIGHT / 2);
+  }
 }
 
 function overlapsBarrier(duck, barrier) {
@@ -552,7 +629,8 @@ function updateBurn(duck, touchingFire, dt) {
 function advanceArena(state, dt) {
   const previousTime = state.arcade ? state.elapsed : (state.scroll - state.stageStartScroll) / SCROLL_SPEED;
   state.elapsed += dt;
-  if (state.arcade) state.score += dt * 10;
+  state.passiveScoreRate = getPassiveScoreRate(state);
+  if (state.arcade) state.score += dt * state.passiveScoreRate;
   const attackPhase = state.majorAttackScheduler?.state?.phase;
   const targetWorldSpeed = attackPhase === 'TELEGRAPH' || attackPhase === 'COMMIT' ? 0.45
     : attackPhase === 'EXECUTE' ? 0.65
@@ -567,6 +645,10 @@ function advanceArena(state, dt) {
     state.gapFormation.remaining -= dt;
     if (state.gapFormation.remaining <= 0) state.gapFormation = null;
   }
+  if (state.recruitEffect) {
+    state.recruitEffect.remaining -= dt;
+    if (state.recruitEffect.remaining <= 0) state.recruitEffect = null;
+  }
   advanceHand(state, dt);
   for (const entry of state.hands.values()) advanceHand({ hand: entry.hand, handTarget: entry.target }, dt);
   const primary = state.hands.get('primary') ?? state.hands.values().next().value;
@@ -575,6 +657,14 @@ function advanceArena(state, dt) {
     state.handTarget = primary.target;
   }
   tickHandActions(state, dt);
+  for (const duck of state.ducks) {
+    const heldSlot = state.heldDuckIds.indexOf(duck.id);
+    if (duck.alive && heldSlot !== -1) {
+      const holdingHand = state.heldByHandId ? state.hands.get(state.heldByHandId)?.hand : state.hand;
+      positionHeldDuck(duck, holdingHand ?? state.hand, heldSlot);
+    }
+  }
+  applyDuckSeparation(state, dt);
   for (const log of state.obstacles) log.x -= scroll;
 
   if (state.arcade && time >= state.nextRecruitTime) addRecruit(state);
@@ -664,7 +754,7 @@ function advanceArena(state, dt) {
 }
 
 export function stepArena(state, deltaSeconds) {
-  if (state.gameOver || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+  if (state.gameOver || state.paused || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
 
   const dt = Math.min(deltaSeconds, 0.05);
   const steps = Math.ceil(dt / MAX_STEP);

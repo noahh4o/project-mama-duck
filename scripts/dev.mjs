@@ -18,7 +18,7 @@ const files = new Map([
   ['/assets/handGrab.png', 'assets/handGrab.png'],
   ['/assets/duckling.png', 'assets/duckling.png'],
   ['/assets/pixelify-sans.woff2', 'assets/pixelify-sans.woff2'],
-  ...['arena', 'art', 'audio', 'enemies', 'events', 'game', 'tutorial', 'classic-input'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
+  ...['arena', 'art', 'audio', 'enemies', 'events', 'game', 'tutorial', 'classic-input', 'records'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
   ...['hands', 'tracker', 'gestures', 'advanced', 'horns', 'input-adapter'].map((module) => [`/hands/${module}.mjs`, `hands/${module}.mjs`]),
 ]);
 const contentTypes = {

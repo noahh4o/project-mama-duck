@@ -1,6 +1,6 @@
 import {
   ACTION_COSTS, canPerformHandAction, createArena, DEATH_LIMIT, getArenaSummary, HEIGHT, MAX_STAMINA,
-  performHandAction, PIXELS_PER_METER, setGapFormation, setHandPosition, setHandStates, STAGE_DISTANCE,
+  performHandAction, PIXELS_PER_METER, setArenaPaused, setGapFormation, setHandPosition, setHandStates, STAGE_DISTANCE,
   STAGE_REINFORCEMENTS, stepArena, WIDTH,
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
@@ -8,6 +8,7 @@ import { createGameAudio } from './audio.mjs';
 import { advanceTutorial, createTutorial, getTutorialLesson, TUTORIAL_LESSON_COUNT } from './tutorial.mjs';
 import { createHandsController } from './hands/hands.mjs';
 import { createClassicWebcamInput } from './classic-input.mjs';
+import { readHighScore, saveHighScore } from './records.mjs';
 
 const canvas = document.querySelector('canvas');
 const remaining = document.querySelector('#remaining');
@@ -15,6 +16,7 @@ const losses = document.querySelector('#losses');
 const distance = document.querySelector('#distance');
 const score = document.querySelector('#score');
 const highScore = document.querySelector('#high-score');
+const scoreRate = document.querySelector('#score-rate');
 const startScreen = document.querySelector('#start-screen');
 const endScreen = document.querySelector('#end-screen');
 const result = document.querySelector('#result');
@@ -350,7 +352,10 @@ soundToggle.addEventListener('click', () => {
   sound.setMuted(!enabled);
   if (enabled) sound.unlock();
 });
-document.addEventListener('visibilitychange', updateMusic);
+document.addEventListener('visibilitychange', () => {
+  setArenaPaused(arena, document.hidden || controlsGuide.open);
+  updateMusic();
+});
 window.addEventListener('pagehide', () => sound.setMusic(false));
 window.addEventListener('pageshow', updateMusic);
 
@@ -359,10 +364,12 @@ for (const button of document.querySelectorAll('[data-show-controls]')) {
     pressed.clear();
     releaseAllGrabs();
     controlsGuide.showModal();
+    setArenaPaused(arena, true);
     updateMusic();
   });
 }
 controlsGuide.addEventListener('close', () => {
+  setArenaPaused(arena, false);
   updateMusic();
   if (running && !arena.gameOver) {
     (tutorial && getTutorialLesson(tutorial).complete ? enterArena : canvas).focus();
@@ -403,7 +410,8 @@ function updateStatus() {
   losses.textContent = arena.arcade ? String(summary.losses) : `${summary.losses} / ${DEATH_LIMIT}`;
   distance.textContent = `${summary.distance} m`;
   if (score) score.textContent = summary.score.toLocaleString();
-  const storedHighScore = Number(localStorage.getItem('motherduck-high-score') ?? 0);
+  if (scoreRate) scoreRate.textContent = `+${summary.passiveRate}/s`;
+  const storedHighScore = readHighScore();
   if (highScore) highScore.textContent = Math.max(storedHighScore, summary.score).toLocaleString();
   const stamina = String(Math.floor(arena.stamina));
   const held = arena.heldDuckIds.length;
@@ -458,8 +466,7 @@ function frame(now) {
 
     if (arena.gameOver) {
       const finalScore = Math.floor(arena.score ?? 0);
-      const previousHighScore = Number(localStorage.getItem('motherduck-high-score') ?? 0);
-      if (finalScore > previousHighScore) localStorage.setItem('motherduck-high-score', String(finalScore));
+      saveHighScore(finalScore);
       updateMusic();
       result.textContent = `The flock made it ${distance.textContent} and scored ${finalScore.toLocaleString()} points.`;
       runTools.hidden = true;

@@ -305,7 +305,8 @@ test('new arena restart resets hand ownership and can schedule a fresh attack', 
 
   const restarted = createArena('forest', { seed: 14, progression: true, arcade: true });
   assert.deepEqual(getArenaSummary(restarted), {
-    flock: 3, flockA: 3, flockB: 0, losses: 0, distance: 0, score: 0, stage: 1, gameOver: false,
+    flock: 3, flockA: 3, flockB: 0, losses: 0, distance: 0, score: 0,
+    passiveRate: 30, stage: 1, gameOver: false,
   });
   assert.equal(restarted.handMode, 'one');
   assert.equal(restarted.twoFlocks, false);

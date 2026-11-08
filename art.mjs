@@ -1,6 +1,7 @@
 import {
   ALLIGATOR_JAW_HEIGHT, ALLIGATOR_JAW_WIDTH, alligatorJaw, countExposedDucks,
-  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, foxAttackCorridor, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE, MAX_STAMINA
+  BURN_LIMIT, DUCK_HEIGHT, DUCK_WIDTH, foxAttackCorridor, HEIGHT, WIDTH, HAND_HEIGHT, HAND_WIDTH, HAND_SCALE, MAX_STAMINA,
+  PASSIVE_SCORE_PER_DUCK,
 } from './arena.mjs';
 
 const duckPixels = [
@@ -221,6 +222,20 @@ export async function createRenderer(context) {
     if (state.recruit) {
       drawWarning(context, { x: state.recruit.x - 11, y: state.recruit.y - 11, width: 22, height: 22 }, '#d4f0df');
       context.drawImage(duck, Math.round(state.recruit.x - DUCK_WIDTH / 2), Math.round(state.recruit.y - DUCK_HEIGHT / 2));
+    }
+    if (state.recruitEffect) {
+      const progress = 1 - state.recruitEffect.remaining / 0.7;
+      const radius = Math.round(9 + progress * 7);
+      const color = state.recruitEffect.flock === 'B' ? '#ffb265' : '#91cbd0';
+      drawWarning(context, {
+        x: Math.round(state.recruitEffect.x - radius),
+        y: Math.round(state.recruitEffect.y - radius),
+        width: radius * 2,
+        height: radius * 2,
+      }, color);
+      context.fillStyle = '#f2f1d8';
+      context.font = '7px "Pixelify Sans", monospace';
+      context.fillText(`+${state.recruitEffect.rateDelta ?? PASSIVE_SCORE_PER_DUCK}/s`, Math.round(state.recruitEffect.x - 9), Math.round(state.recruitEffect.y - radius - 2));
     }
     for (const duckling of state.ducks) {
       if (!duckling.alive) continue;
