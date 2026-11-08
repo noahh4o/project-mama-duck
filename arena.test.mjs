@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createEventSchedule } from "./events.mjs";
 import {
   ACTION_COSTS,
   ALLIGATOR_JAW_HEIGHT,
@@ -33,7 +34,6 @@ test("a fresh run has enough living ducks to reach the death limit", () => {
   assert.equal(state.deaths, 0);
   assert.equal(state.gameOver, false);
 });
-
 test("a hit kills an unprotected duck once and ignores a protected duck", () => {
   const state = createArena();
   const [protectedDuck, unprotectedDuck] = state.ducks;
@@ -476,12 +476,26 @@ test("defense slam repels a duck from an enemy without dealing damage", () => {
   assert.equal(enemy.hp, enemy.maxHp);
 });
 
-function quietStage(zone, seed) {
+function quietStage(zone, seed, stage = 5) {
   const state = createArena(zone, { seed });
+  state.stage = stage;
+  state.eventSchedule = createEventSchedule(zone, stage, seed);
   state.nextEncounterTime = Infinity;
   state.enemies = [];
   return state;
 }
+
+test("classic hazards respect the team's stage unlocks", () => {
+  const early = createEventSchedule("forest", 1, 0);
+  const middle = createEventSchedule("forest", 3, 0);
+  const late = createEventSchedule("forest", 5, 0);
+  assert.equal(early.meteorAt, null);
+  assert.equal(early.lightningAt, null);
+  assert.equal(middle.meteorAt, null);
+  assert.ok(Number.isFinite(middle.lightningAt));
+  assert.ok(Number.isFinite(late.meteorAt));
+  assert.ok(Number.isFinite(late.lightningAt));
+});
 
 test("a meteor starts at a random Forest-only time and hits the center once", () => {
   const early = quietStage("forest", 0);
@@ -546,6 +560,8 @@ test("the meteor preserves flock, losses, held ducks, stamina, and scrolling", (
 
 test("Burned Forest continues the Forest enemy encounters after impact", () => {
   const state = createArena("forest", { seed: 0 });
+  state.stage = 5;
+  state.eventSchedule = createEventSchedule("forest", 5, 0);
   for (const duck of state.ducks) duck.protected = true;
   advance(state, 240);
   const previousEnemies = [...state.enemies];
@@ -702,9 +718,10 @@ test("stage completion adds two ducks and preserves survivors, losses and distan
   advance(state, STAGE_FRAMES - 1);
   assert.equal(state.stage, 1);
   assert.equal(state.stageStartScroll, 0);
-  assert.equal(state.zone, "burnedForest");
+  assert.equal(state.zone, "forest");
   assert.ok(state.scroll < STAGE_DISTANCE * PIXELS_PER_METER);
-  assert.ok(state.obstacles.length > 0);
+  assert.equal(state.meteor, null);
+  assert.equal(state.obstacles.length, 0);
 
   Object.assign(initialDucks[0], { x: state.hand.x - 20, y: state.hand.y, protected: false });
   assert.equal(performHandAction(state, "grab"), true);

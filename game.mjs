@@ -5,6 +5,8 @@ import {
 } from './arena.mjs';
 import { createRenderer } from './art.mjs';
 import { advanceTutorial, createTutorial, getTutorialLesson, TUTORIAL_LESSON_COUNT } from './tutorial.mjs';
+import { createHandsController } from './hands/hands.mjs';
+import { createClassicWebcamInput } from './classic-input.mjs';
 
 const canvas = document.querySelector('canvas');
 const remaining = document.querySelector('#remaining');
@@ -27,6 +29,10 @@ const lessonProgress = document.querySelector('#lesson-progress');
 const lessonTitle = document.querySelector('#lesson-title');
 const lessonPrompt = document.querySelector('#lesson-prompt');
 const enterArena = document.querySelector('#enter-arena');
+const webcamToggle = document.querySelector('#toggle-webcam');
+const stopWebcamButton = document.querySelector('#stop-webcam');
+const tutorialStopWebcam = document.querySelector('#tutorial-stop-webcam');
+const webcamStatus = document.querySelector('#webcam-status');
 const actionBar = document.querySelector('#hand-actions');
 const actionButtons = [...actionBar.querySelectorAll('button')];
 const staminaMeter = document.querySelector('#stamina-meter');
@@ -51,9 +57,16 @@ let lastFrame = null;
 let running = false;
 let tutorial = null;
 let tutorialSeen = false;
+const webcam = createHandsController();
+const cameraInput = createClassicWebcamInput({ width: WIDTH, height: HEIGHT });
+const cameraVideo = document.createElement('video');
+cameraVideo.muted = true;
+cameraVideo.playsInline = true;
+let webcamMode = 'off';
+let cameraRequest = 0;
 
 function moveHand(event) {
-  if (!running || arena.gameOver) return;
+  if (!running || arena.gameOver || webcamMode === 'on') return;
   const bounds = canvas.getBoundingClientRect();
   setHandPosition(
     arena,
@@ -92,6 +105,73 @@ function releaseAllGrabs() {
   grabInputs.clear();
   if (wasGrabbing && arena.heldDuckIds.length) triggerAction('release');
 }
+
+function updateWebcamControls(message = '') {
+  const active = webcamMode === 'on';
+  const starting = webcamMode === 'starting';
+  webcamToggle.textContent = active ? 'Turn webcam off' : starting ? 'Cancel webcam' : 'Webcam';
+  webcamToggle.setAttribute('aria-pressed', String(active));
+  stopWebcamButton.hidden = !active;
+  tutorialStopWebcam.hidden = !active;
+  start.disabled = starting;
+  tutorialOption.disabled = starting;
+  webcamStatus.textContent = message;
+  webcamStatus.hidden = !message;
+}
+
+function stopWebcam(message) {
+  if (webcamMode === 'off') return;
+  cameraRequest += 1;
+  webcamMode = 'off';
+  webcam.stop();
+  cameraInput.reset();
+  endGrab('webcam');
+  updateWebcamControls(message);
+}
+
+webcamToggle.addEventListener('click', async () => {
+  if (webcamMode !== 'off') {
+    stopWebcam();
+    return;
+  }
+
+  const request = ++cameraRequest;
+  webcamMode = 'starting';
+  updateWebcamControls('Loading hand tracking…');
+  try {
+    await webcam.init({ video: cameraVideo });
+    if (request !== cameraRequest) return;
+    await webcam.start();
+    if (request !== cameraRequest) return;
+    webcamMode = 'on';
+    updateWebcamControls('Webcam ready.');
+  } catch (error) {
+    if (request === cameraRequest) stopWebcam(`Webcam unavailable. ${error.message}`);
+  }
+});
+
+for (const button of [stopWebcamButton, tutorialStopWebcam]) {
+  button.addEventListener('click', () => {
+    stopWebcam();
+    canvas.focus();
+  });
+}
+window.addEventListener('pagehide', () => stopWebcam());
+webcam.on('stateChange', (state) => {
+  if (webcamMode !== 'on') return;
+  if (state.status === 'error' || state.status === 'stopped') {
+    stopWebcam(state.error?.message ?? 'Webcam disconnected.');
+    return;
+  }
+  if (!running || arena.gameOver || state.status !== 'running') return;
+
+  const { hand, changed, actions } = cameraInput.update(state);
+  if (changed || hand?.gesture !== 'GRAB') endGrab('webcam');
+  if (!hand) return;
+  setHandPosition(arena, hand.target.x, hand.target.y);
+  if (hand.gesture === 'GRAB') startGrab('webcam');
+  for (const action of actions) triggerAction(action);
+});
 
 for (const button of actionButtons) {
   if (button.dataset.action === 'grab') {
@@ -154,6 +234,8 @@ function loadArena(nextArena) {
   staminaWidget.hidden = true;
   lastFrame = null;
   pressed.clear();
+  grabInputs.clear();
+  cameraInput.reset();
   endScreen.hidden = true;
   renderArena();
   updateStatus();
@@ -191,6 +273,7 @@ function previewZone() {
 
 function showStagePicker() {
   running = false;
+  stopWebcam();
   runTools.hidden = true;
   actionBar.hidden = true;
   tutorialCard.hidden = true;
@@ -284,7 +367,7 @@ function frame(now) {
       dy += y;
     }
     const magnitude = Math.hypot(dx, dy);
-    if (magnitude > 0) {
+    if (magnitude > 0 && webcamMode !== 'on') {
       const stride = 130 * dt / magnitude;
       setHandPosition(arena, arena.handTarget.x + dx * stride, arena.handTarget.y + dy * stride);
     }
@@ -294,6 +377,7 @@ function frame(now) {
     updateStatus();
 
     if (arena.gameOver) {
+      stopWebcam();
       result.textContent = `The flock made it ${distance.textContent}.`;
       runTools.hidden = true;
       eventNotice.hidden = true;

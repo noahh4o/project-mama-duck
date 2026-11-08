@@ -29,6 +29,7 @@
           <button id="restart" type="button">Restart <span aria-hidden="true">↻</span></button>
           <button id="change-zone" type="button">Zones</button>
         </div>
+        <button id="stop-webcam" type="button" hidden>Use mouse</button>
       </div>
     </div>
 
@@ -37,6 +38,7 @@
     <section class="tutorial-card" id="tutorial-card" aria-label="Tutorial lesson" hidden>
       <div class="tutorial-heading">
         <span id="lesson-progress"></span>
+        <button id="tutorial-stop-webcam" type="button" hidden>Use mouse</button>
         <button id="skip-lesson" type="button">Skip tutorial</button>
       </div>
       <div role="status">
@@ -64,7 +66,9 @@
         <div class="menu-actions">
           <button id="start" type="button">Start tutorial</button>
           <button id="tutorial-option" type="button">Skip tutorial</button>
+          <button id="toggle-webcam" type="button" aria-pressed="false">Webcam</button>
         </div>
+        <p id="webcam-status" role="status" hidden></p>
       </div>
     </div>
 

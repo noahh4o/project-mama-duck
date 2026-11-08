@@ -38,7 +38,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .screen.in-tutorial .stats { display: none; }
 .tutorial-card { position: absolute; z-index: 1; top: clamp(5px, 2cqw, 22px); left: 50%; transform: translateX(-50%); width: min(66%, 450px); padding: clamp(5px, 1.2cqw, 14px); background: #203432f2; border: 1px solid #8bbcb1; box-shadow: 3px 3px 0 #2034327d; pointer-events: none; }
 .tutorial-card[hidden] { display: none; }
-.tutorial-heading { display: flex; justify-content: space-between; gap: 6px; align-items: center; color: var(--muted); text-transform: uppercase; font-size: clamp(9px, 1.1cqw, 13px); }
+.tutorial-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; align-items: center; color: var(--muted); text-transform: uppercase; font-size: clamp(9px, 1.1cqw, 13px); }
+#webcam-status[hidden] { display: none; }
 .tutorial-card #lesson-title { font-size: clamp(14px, 2.2cqw, 25px); letter-spacing: -0.035em; }
 .tutorial-card p { margin: 3px 0 0; font-size: clamp(10px, 1.4cqw, 15px); line-height: 1.28; }
 .tutorial-card button { pointer-events: auto; min-height: 24px; padding: 3px 6px; }

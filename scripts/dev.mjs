@@ -17,7 +17,8 @@ const files = new Map([
   ['/assets/handSleep.png', 'assets/handSleep.png'],
   ['/assets/handGrab.png', 'assets/handGrab.png'],
   ['/assets/duckling.png', 'assets/duckling.png'],
-  ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
+  ...['arena', 'art', 'enemies', 'events', 'game', 'tutorial', 'classic-input'].map((module) => [`/${module}.mjs`, `${module}.mjs`]),
+  ...['hands', 'tracker', 'gestures', 'advanced', 'horns', 'input-adapter'].map((module) => [`/hands/${module}.mjs`, `hands/${module}.mjs`]),
 ]);
 const contentTypes = {
   html: 'text/html; charset=utf-8',
